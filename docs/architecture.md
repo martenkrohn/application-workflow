@@ -1,32 +1,46 @@
-# Architektur
+# Architecture and provenance
 
-## Bestehendes Arbeitsprojekt
+## Working layers
 
-| Schicht | Aufgabe | Stand in dieser Projektfassung |
+| Layer | Responsibility | Origin |
 | --- | --- | --- |
-| Domain | Datenmodelle, Qualitäts- und Auswahlregeln | Grundlegende Modelle übernommen |
-| Application | Sammlung, Bewertung, E-Mail-Einordnung und Bewerbungsverwaltung | Schnittstellen übernommen; Anwendungslogik noch offen |
-| Adapters | Stellenquellen, Browser und Gmail | Nur vorhandene Fake-Quelle übernommen |
-| Infrastructure | SQLite, Migrationen, Artefakte, Konfiguration und LLM-Anbindung | Noch zu prüfen und zu übernehmen |
-| Web / CLI | Lokales Dashboard und Bedienung | Noch zu prüfen und zu übernehmen |
-| Prompts | Versionierte Anweisungen und Ergebnisschemata | Noch zu prüfen und zu übernehmen |
+| Domain | Source items, quality checks, immutable clean vacancy documents | Transferred; website-specific branches and field aliases removed |
+| Collection | Per-source attempts, artifacts, observations, checkpoints and failure recovery | Existing collection service |
+| Infrastructure | SQLite repositories, 20 migrations, artifact hashes, locking and local configuration | Existing implementation; personal mock address and provider priorities removed |
+| Assessment | Profile snapshots, bounded manifests, input identities, citations, validation and persistent evaluations | Existing detailed-assessment service; neutral profile default, quick-screening class excluded |
+| Portfolio orchestration | Exact human selection, strict whole-batch import, deterministic simulation and decisions | Added for the review edition |
+| Source adapter | Parser for a self-authored HTML fixture | Added; same original SourceAdapter/SourceItem boundary |
+| Mail demonstration | Fictional message handoff, identity and quotation validation, stored proposals | Added; uses the classification categories of the original workflow, not its production mailbox connector |
+| Dashboard / CLI | Local review and explicit preparation, validation, import and decisions | Added as a small provider-neutral interface |
 
-Das erste Beispiel verwendet dieselbe vorhandene Fake-Quelle und dieselben Datenmodelle wie das Arbeitsprojekt. Es ist ein überprüfbarer Einstieg in die Übernahme; es demonstriert noch keine LLM-Bewertung oder E-Mail-Verarbeitung.
+This is an adapted runnable slice, not a copy of the complete private project. The private project remains unchanged. File-level hashes and transfer notes are retained locally outside version control.
 
-## Geplanter Demonstrationsablauf
+## Source normalization
 
-1. Synthetische Stellenanzeigen über eine lokale Quelle einlesen.
-2. Belege normalisieren und in einer ausschließlich für die Demo angelegten SQLite-Datenbank speichern.
-3. Ein fiktives Profil und eine menschliche Auswahl verwenden, daraus ein begrenztes Agenten-Arbeitspaket vorbereiten und strukturierte Beispielergebnisse ohne erforderliche Live-Anmeldung validieren.
-4. Ergebnisse im übernommenen lokalen Dashboard anzeigen.
-5. Die E-Mail-Klassifikation mit vollständig erfundenen Nachrichten ergänzen.
+A source adapter parses its own upstream format and emits JSON in neutral field names. The retained normalizer turns those values and description lines into facts, evidence blocks and immutable versions. Provider names are no longer used for extracting facts or ranking collection candidates.
 
-Die vorhandenen Fachmodule sollen nachvollziehbar übernommen werden. Eine unabhängige Neuentwicklung des gesamten Systems ist nicht vorgesehen.
+The standard source item carries its stable identity, public URL, media type and raw bytes. The core hashes and stores the emitted bytes. For the local HTML adapter these are the extracted neutral records; they are not a byte-for-byte HTTP-response archive. No live request is made by that adapter.
 
-## Quellenabstraktion
+## Assessment handoff
 
-Der gemeinsame Workflow soll konkrete Website-Namen nicht kennen. Die bestehende Adapter-Schnittstelle ist übernommen; die Trennung der weiteren produktiven Sonderfälle ist geplant. Details und Grenzen stehen unter [Neutrale Quellenanbindung](source-adapters.md).
+The person chooses identities explicitly. The existing AssessmentService freezes the fictional profile and selected clean versions into a manifest and item files. Every item is bound to the batch, observation, input hash, profile version and clean vacancy version. A separate HANDOFF.md explains the agent task and the human import step.
 
-## Mensch und KI-Agent als Teil des Ablaufs
+The agent writes results in JSONL. The application checks identity, immutability, score/recommendation consistency and valid evidence references. The portfolio wrapper requires the complete batch to pass before importing. The human's application decision is stored separately from the recommendation.
 
-Neben den Softwareschichten sind die Übergaben zwischen Mensch, KI-Agent und Anwendung zentral. Der Mensch legt Auswahl und Umfang fest; der Agent bewertet vorbereitete Inhalte; die Anwendung validiert und speichert die Ergebnisse. Die derzeitige konkrete Agentenanbindung und die geplante neutrale Demonstration sind unter [Zusammenarbeit zwischen Mensch, KI-Agent und Anwendung](human-ai-workflow.md) voneinander abgegrenzt.
+A modified-input validation path was corrected in the review edition: hash mismatches now return a validation error before attempting to read fields from the changed item.
+
+## Storage and packaging
+
+The database schema is retained to keep the original storage contracts and migration sequence. Some tables support original workflows not exposed by this edition. New portfolio decisions and mail proposals have separate tables; generated data is never committed. Independent named workspaces keep review attempts separate without deletion.
+
+Runtime code uses only Python's standard library. The installed package includes migrations and dashboard assets. Example content, prompts and project configuration remain in the checkout, which is the working directory for CLI usage.
+
+## Intentional limits
+
+- No bundled website-specific scraper, browser automation or live mailbox connector.
+- No automatic model execution, scheduler or multi-provider runner.
+- No claim of a universal HTML parser or complete parity with the production workflow.
+- Validation establishes contract consistency, not the truth of an agent judgement.
+- The local dashboard is a single-user review tool and binds only to loopback.
+
+See [source adapters](source-adapters.md) and [human/agent interaction](human-ai-workflow.md).

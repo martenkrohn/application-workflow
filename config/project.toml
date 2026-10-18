@@ -1,0 +1,8 @@
+[project]
+data_dir = "var"
+
+[database]
+path = "var/db/jobs.sqlite3"
+
+[collection]
+lock_path = "var/locks/daily.lock"

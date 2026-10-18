@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "vacancy-assessment-output-v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "batch_id",
+    "work_item_id",
+    "observation_id",
+    "input_hash",
+    "prompt_id",
+    "prompt_version",
+    "model_id",
+    "status",
+    "profile_id",
+    "profile_version",
+    "profile_hash",
+    "evaluation",
+    "suspicious_content",
+    "clean_version_id",
+    "citations"
+  ],
+  "properties": {
+    "batch_id": {
+      "type": "string"
+    },
+    "work_item_id": {
+      "type": "string"
+    },
+    "observation_id": {
+      "type": "string"
+    },
+    "input_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "prompt_id": {
+      "const": "vacancy-assessment"
+    },
+    "prompt_version": {
+      "const": 3
+    },
+    "model_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "insufficient_evidence"
+      ]
+    },
+    "profile_id": {
+      "type": "string"
+    },
+    "profile_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "profile_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "suspicious_content": {
+      "type": "boolean"
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "suitability_score",
+        "assessment_confidence",
+        "recommendation",
+        "summary",
+        "strengths",
+        "gaps",
+        "deal_breakers",
+        "missing_information",
+        "score_components"
+      ],
+      "properties": {
+        "suitability_score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "assessment_confidence": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "recommendation": {
+          "enum": [
+            "high",
+            "medium",
+            "low",
+            "reject"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "strengths": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "gaps": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "deal_breakers": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "missing_information": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "score_components": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "role_fit",
+            "education",
+            "methods_tools",
+            "experience",
+            "practical_conditions"
+          ],
+          "properties": {
+            "role_fit": {
+              "$ref": "#/$defs/component"
+            },
+            "education": {
+              "$ref": "#/$defs/component"
+            },
+            "methods_tools": {
+              "$ref": "#/$defs/component"
+            },
+            "experience": {
+              "$ref": "#/$defs/component"
+            },
+            "practical_conditions": {
+              "$ref": "#/$defs/component"
+            }
+          }
+        }
+      }
+    },
+    "clean_version_id": {
+      "type": "string",
+      "pattern": "^cv_[0-9a-f]{64}$"
+    },
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "claim",
+          "refs"
+        ],
+        "properties": {
+          "claim": {
+            "type": "string",
+            "minLength": 1
+          },
+          "refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "stringArray": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "score",
+        "rationale"
+      ],
+      "properties": {
+        "score": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 100
+        },
+        "rationale": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

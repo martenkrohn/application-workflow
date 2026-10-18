@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Application Workflow · Review workspace</title><link rel="stylesheet" href="/style.css"></head>
+<body><header><div><p class="eyebrow">HUMAN + AGENT + APPLICATION</p><h1>Application Workflow</h1>
+<p class="intro">Collect evidence. Prepare bounded work. Keep the decision human.</p></div><span class="edition">Portfolio review edition</span></header>
+<main><aside class="notice">Fictional vacancies and messages. Example agent results are explicitly labelled as simulated. No application is sent.</aside>
+<section class="steps" aria-label="Workflow roles"><div><strong>01 / Application</strong><span>Collect and preserve evidence</span></div><div><strong>02 / Human</strong><span>Choose the work to assess</span></div><div><strong>03 / Agent</strong><span>Return structured judgements</span></div><div><strong>04 / Application + human</strong><span>Validate, review and decide</span></div></section>
+<div class="tabs" role="tablist" aria-label="Workspace"><button role="tab" aria-selected="true" data-tab="vacancies">Vacancies</button><button role="tab" aria-selected="false" data-tab="batches">Agent handoffs</button><button role="tab" aria-selected="false" data-tab="email">Mail review</button></div>
+<p id="message" role="status" aria-live="polite"></p>
+<section id="vacancies"><div class="section-heading"><div><h2>Review your opportunities</h2><p>Select ready, unassessed vacancies to prepare an agent task. Preparing never starts an agent.</p></div><button id="prepare">Prepare selected</button></div><p id="summary"></p><div id="jobs" class="cards"></div></section>
+<section id="batches" hidden><h2>Prepared agent handoffs</h2><p>Open HANDOFF.md beside each manifest in your agent workspace. After the agent writes its results, validate and explicitly import them here.</p><div id="batch-list" class="cards"></div></section>
+<section id="email" hidden><h2>Mail classification proposals</h2><p>Evidence-backed proposals remain separate from human application decisions.</p><div id="mail-list" class="cards"></div></section>
+</main><footer>Runs locally · SQLite evidence and history · Versioned inputs · Agent-neutral file handoff</footer>
+<script src="/app.js" defer></script></body></html>

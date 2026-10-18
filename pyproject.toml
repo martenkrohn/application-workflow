@@ -10,5 +10,19 @@ readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = []
 
+[project.scripts]
+jobs = "job_system.cli.main:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[tool.setuptools.package-data]
+job_system = ["infrastructure/migrations/*.sql", "web/static/*.html", "web/static/*.js", "web/static/*.css"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+
 [tool.setuptools.packages.find]
 where = ["src"]

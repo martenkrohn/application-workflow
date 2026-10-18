@@ -8,6 +8,11 @@
 !/examples/
 !/docs/
 !/tests/
+!/config/
+!/prompts/
+!/run_demo.py
+!/pyproject.toml
+!/.github/
 
 # Local migration notes and all operational or personal state.
 /local/
@@ -36,3 +41,10 @@
 **/*.key
 **/.auth/
 **/.browser/
+
+config/*.local.toml
+config/private/
+build/
+dist/
+*.egg-info/
+.coverage

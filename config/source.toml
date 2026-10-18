@@ -1,0 +1,5 @@
+# This is a local HTML fixture, not a live scraper configuration.
+[source]
+name = "demo-html"
+fixture = "examples/jobs.html"
+origin = "https://careers.example.invalid"
