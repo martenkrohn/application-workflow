@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=75,<85"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "application-workflow"
+version = "0.1.0"
+description = "A staged portfolio edition of a local job application workflow."
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
