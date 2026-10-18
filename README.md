@@ -1,12 +1,18 @@
 # Application Workflow
 
-Ein lokaler Bewerbungsworkflow für das Sammeln von Stellenanzeigen, LLM-gestützte Bewertungen und die Verwaltung von Bewerbungsständen.
+Ein lokaler Human-in-the-Loop-Workflow für Bewerbungen: Mensch, KI-Agent und Python-Anwendung arbeiten beim Sammeln von Stellenanzeigen, ihrer Bewertung und der Verwaltung von Bewerbungsständen zusammen.
 
 **Stand: Vorbereitung der Projektveröffentlichung.** Dieses Repository wird schrittweise aus einem bestehenden privaten Arbeitsprojekt aufgebaut. Es enthält zunächst die grundlegenden Datenmodelle und eine vollständig synthetische Stellenquelle. Der vollständige Workflow und das Dashboard sind hier noch nicht übernommen.
 
 ## Zielbild
 
 Das bestehende System verbindet Quellenadapter, nachvollziehbare Stelleninformationen, regelbasierte Vorauswahl, validierte LLM-Ergebnisse, SQLite und ein lokales Dashboard. Hinzu kommen die Einordnung von Bewerbungs-E-Mails und die Verwaltung von Bewerbungsständen. Die Projektfassung soll diese Architektur später mit erfundenen Beispielen demonstrieren.
+
+## Zusammenarbeit mit KI-Agenten
+
+Der Mensch bestimmt Ziele, Auswahl und Umfang. Die Anwendung bereitet begrenzte Arbeitspakete vor; ein KI-Agent bearbeitet diese und liefert strukturierte Ergebnisse. Die Anwendung validiert und übernimmt die Resultate. Der Mensch beurteilt Empfehlungen und entscheidet über Bewerbungen.
+
+Das Konzept ist agentenneutral beschrieben. Die bestehende produktive Ausführung verwendet derzeit eine konkrete Agentenanbindung; mehrere frei austauschbare Agenten werden von dieser Projektfassung noch nicht unterstützt. Der Ablauf und die Übergaben stehen unter [Mensch, Agent und Anwendung](docs/human-ai-workflow.md).
 
 ## Bereits enthalten
 
@@ -34,6 +40,7 @@ Das Beispiel gibt einen erfundenen Stelleneintrag als JSON aus. Die Domain `exam
 | `src/job_system/adapters/sources/fake.py` | Vorhandene synthetische Quelle |
 | `examples/` | Ausführbare Beispiele |
 | `docs/architecture.md` | Architektur und Stand der Übernahme |
+| `docs/human-ai-workflow.md` | Rollen, Entscheidungen und Übergaben zwischen Mensch, Agent und Anwendung |
 | `docs/migration-plan.md` | Nächste Schritte und Abgrenzung zum privaten Arbeitsprojekt |
 
 Der interne Paketname `job_system` bleibt erhalten, damit weitere geprüfte Originalmodule schrittweise übernommen werden können.

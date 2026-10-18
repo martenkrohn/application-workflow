@@ -20,7 +20,8 @@ Das private Arbeitsprojekt bleibt der Ort für den tatsächlichen Bewerbungsallt
 | Quellenabstraktion | Konkrete Domains und Website-Adapter privat halten; Sonderfälle aus gemeinsamer Fachlogik trennen; neutrale Demo-Quelle verwenden |
 | SQLite und Sammlung | Migrationen auf persönliche Vorgaben prüfen; mit leerer Demo-Datenbank und Fake-Quelle starten |
 | Konfiguration | Persönliche Profilpfade und Kontoeinstellungen durch ausdrücklich fiktive Beispiele ersetzen |
-| Bewertungen | Fachlogik, Ergebnisschemata und benötigte Prompts zusammen übernehmen; vorhandene Validierung verwenden |
+| Mensch-Agent-Übergaben | Auswahl und Umfang, vorbereitete Arbeitspakete, Ergebnisübergabe und Nachbearbeitung mit fiktiven Daten demonstrieren |
+| Bewertungen | Fachlogik, Ergebnisschemata und benötigte Prompts zusammen übernehmen; vorhandene Validierung verwenden; konkrete Agentenausführung von der Aufgabenbeschreibung trennen |
 | Dashboard | Persönliche Beschriftungen und Vorgaben entfernen; nur Demo-Daten anzeigen |
 | E-Mail | Persönliche Adressvorgaben abstrahieren; ausschließlich erfundene Testnachrichten mitführen |
 | Tests | Geeignete bestehende Tests auswählen; Fixtures einzeln auf echte Inhalte prüfen |
@@ -47,3 +48,7 @@ Die ausgewählten Dateien und sämtliche Commits dieser neuen Historie prüfen, 
 ## Quellen und öffentliche Darstellung
 
 Die [neutrale Quellenanbindung](source-adapters.md) beschreibt den vorgesehenen Ansatz: allgemeiner Workflow und synthetische Beispiele im öffentlichen Projekt, konkrete Website-Adapter separat. Die vorhandene `SourceAdapter`-Schnittstelle ist zusätzlich übernommen. Domainersetzung allein ersetzt keine Entkopplung der Parser.
+
+## Positionierung des Projekts
+
+Die öffentliche Beschreibung stellt das Projekt als Human-in-the-Loop-Workflow mit KI-Agenten dar. Das agentenneutrale Konzept wird vom derzeit verwendeten Runner getrennt; ungeprüfte Austauschbarkeit zwischen Agentensystemen wird nicht zugesagt. Die konkrete Darstellung steht unter [Mensch, Agent und Anwendung](human-ai-workflow.md).

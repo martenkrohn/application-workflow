@@ -17,7 +17,7 @@ Das erste Beispiel verwendet dieselbe vorhandene Fake-Quelle und dieselben Daten
 
 1. Synthetische Stellenanzeigen über eine lokale Quelle einlesen.
 2. Belege normalisieren und in einer ausschließlich für die Demo angelegten SQLite-Datenbank speichern.
-3. Erfundene Profil- und Bewertungsdaten verwenden; LLM-Ausgaben ohne erforderliche Live-Anmeldung demonstrieren und validieren.
+3. Ein fiktives Profil und eine menschliche Auswahl verwenden, daraus ein begrenztes Agenten-Arbeitspaket vorbereiten und strukturierte Beispielergebnisse ohne erforderliche Live-Anmeldung validieren.
 4. Ergebnisse im übernommenen lokalen Dashboard anzeigen.
 5. Die E-Mail-Klassifikation mit vollständig erfundenen Nachrichten ergänzen.
 
@@ -26,3 +26,7 @@ Die vorhandenen Fachmodule sollen nachvollziehbar übernommen werden. Eine unabh
 ## Quellenabstraktion
 
 Der gemeinsame Workflow soll konkrete Website-Namen nicht kennen. Die bestehende Adapter-Schnittstelle ist übernommen; die Trennung der weiteren produktiven Sonderfälle ist geplant. Details und Grenzen stehen unter [Neutrale Quellenanbindung](source-adapters.md).
+
+## Mensch und KI-Agent als Teil des Ablaufs
+
+Neben den Softwareschichten sind die Übergaben zwischen Mensch, KI-Agent und Anwendung zentral. Der Mensch legt Auswahl und Umfang fest; der Agent bewertet vorbereitete Inhalte; die Anwendung validiert und speichert die Ergebnisse. Die derzeitige konkrete Agentenanbindung und die geplante neutrale Demonstration sind unter [Zusammenarbeit zwischen Mensch, KI-Agent und Anwendung](human-ai-workflow.md) voneinander abgegrenzt.
