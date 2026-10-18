@@ -7,6 +7,8 @@ import json
 import os
 import re
 import tempfile
+import unicodedata
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -15,13 +17,21 @@ from urllib.parse import urlparse
 
 from job_system.application.cleaning import CleaningService
 from job_system.application.ports import Clock, IdGenerator
+from job_system.application.prefilter import (
+    PrefilterDecision,
+    PrefilterPolicy,
+    VacancyPrefilter,
+)
 from job_system.domain.clean_vacancies import (
+    EXTRACTOR_VERSION,
     assessment_packet,
     legacy_fields,
 )
 from job_system.domain.location_policy import LocationPolicy, location_packet
+from job_system.domain.queue_policy import older_than_backlog_window, received_at
 from job_system.infrastructure.database import Database
 from job_system.infrastructure.services import utc_text
+from job_system.reporting.vacancies import observation_screening_packet
 
 PROMPT_ID = "vacancy-assessment"
 PROMPT_VERSION = 1
@@ -251,6 +261,1268 @@ SCREENING_RECORD_KEYS = frozenset(
         "suspicious_content",
     }
 )
+
+
+class ScreeningService:
+    """Compact first-pass assessment used to rank every collected vacancy."""
+
+    def __init__(
+        self,
+        project_root: Path,
+        data_dir: Path,
+        database: Database,
+        clock: Clock,
+        ids: IdGenerator,
+        *,
+        clean_input: bool = True,
+    ) -> None:
+        self.project_root = project_root.resolve()
+        self.data_dir = data_dir.resolve()
+        self.database = database
+        self.clock = clock
+        self.ids = ids
+        self.clean_input = clean_input
+        self.cleaner = CleaningService(self.data_dir, self.database)
+        self._packet_cache: dict[str, dict[str, Any]] = {}
+        self._preview_only = False
+        self.prefilter = VacancyPrefilter(PrefilterPolicy.load(self.project_root))
+        self.location_policy = LocationPolicy.load(self.project_root)
+        recovery_path = self.data_dir / "datasets/location-policy-recovery.json"
+        recovery = (
+            json.loads(recovery_path.read_text(encoding="utf-8"))
+            if recovery_path.exists()
+            else []
+        )
+        self._location_recovery = {
+            (entry["source"], entry["external_id"], entry["clean_version_id"])
+            for entry in recovery
+        }
+
+    def prepare(
+        self,
+        source_names: tuple[str, ...],
+        limit: int = SCREENING_WAVE_SIZE,
+        profile_path: Path = DEFAULT_PROFILE,
+        *,
+        cycle_id: str | None = None,
+    ) -> dict[str, Any]:
+        if limit <= 0 or limit > SCREENING_WAVE_SIZE:
+            raise AssessmentError(
+                f"screening batch limit must be between 1 and {SCREENING_WAVE_SIZE}"
+            )
+        prompt_version = (
+            (6 if self.location_policy.enabled else 4) if self.clean_input else 2
+        )
+        profile = AssessmentService(
+            self.project_root, self.data_dir, self.database, self.clock, self.ids
+        ).ensure_profile(profile_path)
+        with self.database.unit_of_work() as work:
+            available = work.normalization.screening_candidates(
+                source_names, 2147483647
+            )
+            handled = work.normalization.handled_candidate_observations()
+        ordered, selection = self._select_candidates(available, handled)
+        candidates = ordered[:limit]
+        if not candidates:
+            raise NoAssessmentCandidates(
+                "no new or changed observations need quick screening"
+            )
+        selected_bands = {
+            f"L{location}R{role}": 0 for location in range(1, 4) for role in range(1, 4)
+        }
+        for candidate in candidates:
+            selected_decision = self.prefilter.evaluate(self._packet(candidate))
+            selected_bands[
+                f"L{selected_decision.location_band}R{selected_decision.role_band}"
+            ] += 1
+        cycle_id = cycle_id or self.ids.new("screening")
+        batch_id = self.ids.new("aiw")
+        relative_directory = Path("ai") / "batches" / batch_id
+        directory = self.data_dir / relative_directory
+        output_relative = Path("ai") / "staging" / batch_id / "results.jsonl"
+        data_relative = self.data_dir.relative_to(self.project_root)
+        manifest_items: list[dict[str, str]] = []
+        prepared_items: list[dict[str, str]] = []
+        shared_profile = None
+        if self.clean_input:
+            snapshot = _json_bytes(
+                {
+                    "profile_id": profile.profile_id,
+                    "version": profile.version,
+                    "content_hash": profile.content_hash,
+                    "content": profile.content,
+                }
+            )
+            _write_atomic(directory / "profile.json", snapshot)
+            shared_profile = {"path": "profile.json", "hash": _sha256(snapshot)}
+        for candidate in candidates:
+            artifact_path = (self.data_dir / str(candidate["relative_path"])).resolve()
+            if (
+                not artifact_path.is_relative_to(self.data_dir)
+                or not artifact_path.is_file()
+            ):
+                raise AssessmentError(
+                    f"invalid evidence artifact for {candidate['id']}"
+                )
+            content = artifact_path.read_bytes()
+            if _sha256(content) != candidate["artifact_hash"]:
+                raise AssessmentError(
+                    f"invalid evidence artifact for {candidate['id']}"
+                )
+            work_item_id = self.ids.new("aiwitem")
+            item = {
+                "batch_id": batch_id,
+                "work_item_id": work_item_id,
+                "observation_id": candidate["id"],
+                "source_name": candidate["source_name"],
+                "external_id": candidate["external_id"],
+                "artifact_hash": candidate["artifact_hash"],
+                "profile": {
+                    "profile_id": profile.profile_id,
+                    "profile_name": profile.profile_name,
+                    "version": profile.version,
+                    "content_hash": profile.content_hash,
+                    "content": profile.content,
+                },
+                "screening_packet": self._packet(candidate),
+            }
+            if self.clean_input:
+                item.pop("profile")
+                item["profile_hash"] = profile.content_hash
+                item["screening_packet"] = self._prepared_packet(
+                    self.cleaner.get(self._packet(candidate)["version_id"]),
+                    prompt_version,
+                )
+            item_bytes = _json_bytes(item)
+            input_hash = _sha256(item_bytes)
+            relative_item = Path("items") / f"{work_item_id}.json"
+            _write_atomic(directory / relative_item, item_bytes)
+            manifest_items.append(
+                {
+                    "work_item_id": work_item_id,
+                    "observation_id": str(candidate["id"]),
+                    "path": relative_item.as_posix(),
+                    "input_hash": input_hash,
+                }
+            )
+            prepared_items.append(
+                {
+                    "id": work_item_id,
+                    "observation_id": str(candidate["id"]),
+                    "input_hash": input_hash,
+                }
+            )
+        manifest: dict[str, Any] = {
+            "batch_id": batch_id,
+            "cycle_id": cycle_id,
+            "task": SCREENING_PROMPT_ID,
+            "prompt_id": SCREENING_PROMPT_ID,
+            "prompt_version": prompt_version,
+            "created_at": utc_text(self.clock.now()),
+            "profile_id": profile.profile_id,
+            "profile_version": profile.version,
+            "profile_hash": profile.content_hash,
+            "profile_path": profile.relative_path,
+            "source_names": list(source_names),
+            "expected_item_count": len(manifest_items),
+            "items": manifest_items,
+            "allowed_output_path": (data_relative / output_relative).as_posix(),
+        }
+        if shared_profile:
+            manifest["profile_document"] = shared_profile
+        if self.location_policy.enabled:
+            manifest["quick_location_policy"] = {
+                "hash": self.location_policy.fingerprint,
+                "groups_in_priority_order": list(self.location_policy.labels),
+                "approved_places": {
+                    city: self.location_policy.labels[group]
+                    for city, (group, _) in self.location_policy.cities.items()
+                },
+                "admitted_work_items": {
+                    item["work_item_id"]: {
+                        "group": self.location_policy.label(
+                            self.location_policy.classify(self._packet(candidate))
+                        )
+                        if self.location_policy.classify(self._packet(candidate)).group
+                        is not None
+                        else None,
+                        "reason": self.location_policy.classify(
+                            self._packet(candidate)
+                        ).reason,
+                    }
+                    for item, candidate in zip(manifest_items, candidates, strict=True)
+                },
+            }
+        manifest_bytes = _json_bytes(manifest)
+        manifest_hash = _sha256(manifest_bytes)
+        _write_atomic(directory / "manifest.json", manifest_bytes)
+        instruction = f"Quick-screening batch {batch_id} is ready.\nUse prompts/{SCREENING_PROMPT_ID}/v{prompt_version}/prompt.md\nInput: {(data_relative / relative_directory / 'manifest.json').as_posix()}\nOutput: {(data_relative / output_relative).as_posix()}\nThen run: jobs screening finish {batch_id}\n".encode()
+        _write_atomic(directory / "instructions.txt", instruction)
+        with self.database.unit_of_work() as work:
+            work.normalization.create_batch(
+                {
+                    "id": batch_id,
+                    "prompt_id": SCREENING_PROMPT_ID,
+                    "prompt_version": prompt_version,
+                    "manifest_hash": manifest_hash,
+                    "created_at": manifest["created_at"],
+                    "input_directory": relative_directory.as_posix(),
+                    "output_path": output_relative.as_posix(),
+                    "cycle_id": cycle_id,
+                },
+                tuple(prepared_items),
+            )
+        return {
+            "batch_id": batch_id,
+            "cycle_id": cycle_id,
+            "profile_id": profile.profile_id,
+            "item_count": len(prepared_items),
+            "manifest_hash": manifest_hash,
+            "excluded": selection["exclusions"],
+            "selection": selection,
+            "selected_bands": selected_bands,
+            "instructions": instruction.decode().splitlines(),
+        }
+
+    def pool_summary(
+        self,
+        source_names: tuple[str, ...],
+        profile_path: Path = DEFAULT_PROFILE,
+        *,
+        preview_limit: int | None = None,
+    ) -> dict[str, Any]:
+        profile = AssessmentService(
+            self.project_root, self.data_dir, self.database, self.clock, self.ids
+        ).ensure_profile(profile_path)
+        with self.database.unit_of_work() as work:
+            available = work.normalization.screening_candidates(
+                source_names, 2147483647
+            )
+            handled = work.normalization.handled_candidate_observations()
+        ordered, summary = self._select_candidates(available, handled)
+        if preview_limit is not None:
+            summary["selected_preview"] = self._queue_statistics(
+                ordered[: max(0, preview_limit)]
+            )
+        return summary | {"profile_id": profile.profile_id}
+
+    def location_preview(
+        self,
+        source_names: tuple[str, ...],
+        profile_path: Path = DEFAULT_PROFILE,
+        limit: int = 30,
+    ) -> dict[str, Any]:
+        """Read saved facts without registering profiles, cleaning versions or AI batches."""
+        ProfileDocument.load(self.project_root, profile_path)
+        with self.database.unit_of_work() as work:
+            rows = work.evidence.review(2147483647, source_names)
+            candidates = work.normalization.screening_candidates(
+                source_names, 2147483647
+            )
+            handled = work.normalization.handled_candidate_observations()
+        counts = dict.fromkeys(
+            (*self.location_policy.labels, "Outside scope", "Needs clarification"), 0
+        )
+        examples: dict[str, list[dict[str, Any]]] = {label: [] for label in counts}
+        self._preview_only = True
+        try:
+            remote = 0
+            for row in rows:
+                packet = self._packet(row)
+                decision = self.location_policy.classify(packet)
+                label = (
+                    self.location_policy.labels[decision.group]
+                    if decision.group is not None
+                    else "Needs clarification"
+                    if decision.reason == "location_needs_clarification"
+                    else "Outside scope"
+                )
+                counts[label] += 1
+                remote += int(decision.full_remote)
+                if len(examples[label]) < 10:
+                    examples[label].append(
+                        {
+                            "source": row["source_name"],
+                            "external_id": row["external_id"],
+                            "title": packet.get("title"),
+                            "locations": packet.get("locations"),
+                            "reason": decision.reason,
+                        }
+                    )
+            policy = self.location_policy
+            try:
+                self.location_policy = LocationPolicy({})
+                _, baseline = self._select_candidates(candidates, handled)
+            finally:
+                self.location_policy = policy
+            ordered, summary = self._select_candidates(candidates, handled)
+            selected = [
+                {
+                    "source": row["source_name"],
+                    "external_id": row["external_id"],
+                    "title": self._packet(row).get("title"),
+                    "locations": self._packet(row).get("locations"),
+                    "group": self.location_policy.label(
+                        self.location_policy.classify(self._packet(row))
+                    ),
+                }
+                for row in ordered[:limit]
+            ]
+            return {
+                "saved_vacancies": len(rows),
+                "classifications": counts,
+                "confirmed_full_remote": remote,
+                "examples": examples,
+                "quick_screening_pool": summary,
+                "previous_policy_eligible_count": baseline["eligible_count"],
+                "selected_limit": limit,
+                "first_selected": selected,
+                "network_requests": 0,
+                "database_changes": 0,
+                "location_policy_hash": self.location_policy.fingerprint,
+            }
+        finally:
+            self._preview_only = False
+            self._packet_cache.clear()
+
+    def audit(
+        self, source_names: tuple[str, ...], profile_path: Path = DEFAULT_PROFILE
+    ) -> dict[str, Any]:
+        profile = AssessmentService(
+            self.project_root, self.data_dir, self.database, self.clock, self.ids
+        ).ensure_profile(profile_path)
+        with self.database.unit_of_work() as work:
+            history = work.normalization.screening_history(profile.profile_id)
+        rules: dict[str, dict[str, Any]] = {}
+        for row in history:
+            packet = self._packet(row)
+            decision = self.prefilter.evaluate(packet)
+            matches = [
+                *((f"hard:{value}", "hard_exclude") for value in decision.matched_hard),
+                *(
+                    (
+                        f"negative:{value}",
+                        "hard_exclude"
+                        if decision.exclusion_reason
+                        == "professional_conditional_mismatch"
+                        and value in self.prefilter.policy.conditional_negative_phrases
+                        else "R3",
+                    )
+                    for value in decision.matched_negative
+                ),
+            ]
+            for name, action in matches:
+                entry = rules.setdefault(
+                    name,
+                    {
+                        "action": action,
+                        "historical_matches": 0,
+                        "score_50_plus": 0,
+                        "score_75_plus": 0,
+                        "samples": [],
+                    },
+                )
+                score = int(row["suitability_score"])
+                entry["historical_matches"] += 1
+                entry["score_50_plus"] += int(score >= 50)
+                entry["score_75_plus"] += int(score >= 75)
+                if len(entry["samples"]) < 5:
+                    entry["samples"].append(
+                        {
+                            "score": score,
+                            "title": packet.get("title"),
+                            "locations": packet.get("locations"),
+                        }
+                    )
+        return {
+            "profile_id": profile.profile_id,
+            "historical_items": len(history),
+            "current_pool": self.pool_summary(source_names, profile_path),
+            "rules": dict(sorted(rules.items())),
+        }
+
+    def validate(self, batch_id: str) -> ValidationResult:
+        batch, items, manifest = self._load_batch(batch_id)
+        output = self._data_path(str(batch["output_path"]))
+        if not output.is_file():
+            raise AssessmentError(f"staged output not found: {batch['output_path']}")
+        expected = {str(item["id"]): item for item in items}
+        manifest_items = {str(item["work_item_id"]): item for item in manifest["items"]}
+        valid: list[dict[str, Any]] = []
+        errors: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for line_number, line in enumerate(
+            output.read_text(encoding="utf-8").splitlines(), 1
+        ):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as error:
+                errors.append(
+                    {"line": line_number, "errors": [f"invalid JSON: {error}"]}
+                )
+                continue
+            record_errors = self._validate_record(
+                record, batch, expected, manifest_items, manifest, seen
+            )
+            if record_errors:
+                errors.append(
+                    {
+                        "line": line_number,
+                        "work_item_id": record.get("work_item_id")
+                        if isinstance(record, dict)
+                        else None,
+                        "errors": record_errors,
+                    }
+                )
+            else:
+                valid.append(record)
+                seen.add(str(record["work_item_id"]))
+        missing = sorted(
+            set(expected) - seen - {str(error.get("work_item_id")) for error in errors}
+        )
+        errors.extend(
+            (
+                {
+                    "line": None,
+                    "work_item_id": item_id,
+                    "errors": ["missing result record"],
+                }
+                for item_id in missing
+            )
+        )
+        invalid_ids = {error.get("work_item_id") for error in errors}
+        valid = [
+            record for record in valid if record["work_item_id"] not in invalid_ids
+        ]
+        with self.database.unit_of_work() as work:
+            for record in valid:
+                if expected[str(record["work_item_id"])]["status"] != "imported":
+                    work.normalization.set_item_status(
+                        str(record["work_item_id"]), "validated"
+                    )
+            if batch["status"] != "imported":
+                work.normalization.set_batch_status(
+                    batch_id, "validated" if not errors else "partial"
+                )
+        return ValidationResult(
+            batch_id, len(valid), len(errors), tuple(errors), tuple(valid)
+        )
+
+    def cancel_batch(self, batch_id: str, reason: str) -> dict[str, Any]:
+        normalized_reason = reason.strip()
+        if not normalized_reason:
+            raise AssessmentError("screening cancellation reason must not be empty")
+        with self.database.unit_of_work() as work:
+            return work.normalization.cancel_assessment_batch(
+                batch_id,
+                utc_text(self.clock.now()),
+                normalized_reason,
+                SCREENING_PROMPT_ID,
+            )
+
+    def import_batch(
+        self, batch_id: str, *, allow_partial: bool = False
+    ) -> dict[str, Any]:
+        validation = self.validate(batch_id)
+        if validation.rejected_count and (not allow_partial):
+            raise AssessmentError(
+                "cannot import a screening batch with invalid records"
+            )
+        batch, items, manifest = self._load_batch(batch_id)
+        expected = {item["id"]: item for item in items}
+        directory = self._data_path(str(batch["input_directory"]))
+        paths = {
+            str(item["work_item_id"]): directory / str(item["path"])
+            for item in manifest["items"]
+        }
+        timestamp = utc_text(self.clock.now())
+        imported = 0
+        unchanged = 0
+        with self.database.unit_of_work() as work:
+            for record in validation.valid_records:
+                if expected[str(record["work_item_id"])]["status"] == "imported":
+                    unchanged += 1
+                    continue
+                item = json.loads(
+                    paths[str(record["work_item_id"])].read_text(encoding="utf-8")
+                )
+                screening = {
+                    "id": self.ids.new("screen"),
+                    "observation_id": record["observation_id"],
+                    "source_name": item["source_name"],
+                    "external_id": item["external_id"],
+                    "artifact_hash": item["artifact_hash"],
+                    "profile_id": record["profile_id"],
+                    "screening_cycle_id": manifest["cycle_id"],
+                    "input_hash": record["input_hash"],
+                    "suitability_score": record["suitability_score"],
+                    "assessment_confidence": record["assessment_confidence"],
+                    "decision": record["decision"],
+                    "summary": record["summary"],
+                    "result_json": json.dumps(
+                        record, ensure_ascii=False, sort_keys=True
+                    ),
+                    "prompt_id": record["prompt_id"],
+                    "prompt_version": record["prompt_version"],
+                    "model_id": record["model_id"],
+                    "created_at": timestamp,
+                    "updated_at": timestamp,
+                }
+                changed = work.normalization.upsert_screening(screening)
+                imported += int(changed)
+                unchanged += int(not changed)
+                work.normalization.set_item_status(
+                    str(record["work_item_id"]), "imported"
+                )
+            work.normalization.set_batch_status(
+                batch_id, "partial" if validation.rejected_count else "imported"
+            )
+            assert work.connection is not None
+            work.connection.execute(
+                "UPDATE problem_items SET state='resolved' WHERE batch_id=? AND state='open' AND work_item_id IN (SELECT id FROM ai_work_items WHERE batch_id=? AND status='imported')",
+                (batch_id, batch_id),
+            )
+        return {
+            "batch_id": batch_id,
+            "profile_id": manifest["profile_id"],
+            "screening_cycle_id": manifest["cycle_id"],
+            "rejected": validation.rejected_count,
+            "source_names": tuple((str(value) for value in manifest["source_names"])),
+            "profile_path": str(manifest["profile_path"]),
+            "imported": imported,
+            "unchanged": unchanged,
+        }
+
+    def _validate_record(
+        self,
+        record: object,
+        batch: dict[str, Any],
+        expected: dict[str, dict[str, Any]],
+        manifest_items: dict[str, dict[str, Any]],
+        manifest: dict[str, Any],
+        seen: set[str],
+    ) -> list[str]:
+        if not isinstance(record, dict):
+            return ["result must be a JSON object"]
+        errors: list[str] = []
+        required = SCREENING_RECORD_KEYS | (
+            {"clean_version_id", "exclusion_basis"}
+            if batch["prompt_version"] >= 3
+            else set()
+        )
+        if batch["prompt_version"] >= 6:
+            required |= {"location_assessment"}
+        if set(record) != required:
+            errors.append(
+                f"result fields do not exactly match vacancy-screening schema v{batch['prompt_version']}"
+            )
+        if _contains_mojibake(record) or _damaged_output_text(record):
+            errors.append(
+                "result text appears to contain incorrectly decoded UTF-8 (mojibake)"
+            )
+        item_id = record.get("work_item_id")
+        if not isinstance(item_id, str) or item_id not in expected:
+            return ["unknown work_item_id"]
+        if item_id in seen:
+            return ["duplicate work_item_id"]
+        checks = {
+            "batch_id": batch["id"],
+            "observation_id": expected[item_id]["observation_id"],
+            "input_hash": expected[item_id]["input_hash"],
+            "prompt_id": SCREENING_PROMPT_ID,
+            "prompt_version": batch["prompt_version"],
+            "profile_id": manifest["profile_id"],
+            "profile_version": manifest["profile_version"],
+            "profile_hash": manifest["profile_hash"],
+        }
+        for key, value in checks.items():
+            if record.get(key) != value:
+                errors.append(f"{key} does not match the prepared batch")
+        item_path = (
+            self._data_path(str(batch["input_directory"]))
+            / manifest_items[item_id]["path"]
+        )
+        if _sha256(item_path.read_bytes()) != expected[item_id]["input_hash"]:
+            return [*errors, "prepared input changed after batch creation"]
+        for name in ("suitability_score", "assessment_confidence"):
+            value = record.get(name)
+            minimum = (
+                1 if name == "suitability_score" and batch["prompt_version"] >= 4 else 0
+            )
+            if (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or (not minimum <= value <= 100)
+            ):
+                errors.append(f"{name} must be an integer from {minimum} to 100")
+        if record.get("decision") not in {"promote", "deprioritize"}:
+            errors.append("decision is invalid")
+        score = record.get("suitability_score")
+        if (
+            record.get("decision") == "deprioritize"
+            and isinstance(score, int)
+            and (score >= SCREENING_PROMOTION_SCORE)
+        ):
+            errors.append(
+                f"deprioritize requires a score below {SCREENING_PROMOTION_SCORE}"
+            )
+        if (
+            record.get("decision") == "promote"
+            and isinstance(score, int)
+            and (score < SCREENING_PROMOTION_SCORE)
+        ):
+            errors.append(
+                f"promote requires a score of at least {SCREENING_PROMOTION_SCORE}"
+            )
+        if record.get("status") != "completed":
+            errors.append("status must be completed")
+        if not isinstance(record.get("model_id"), str) or not record["model_id"]:
+            errors.append("model_id must be a non-empty string")
+        if not isinstance(record.get("summary"), str) or not record["summary"].strip():
+            errors.append("summary must be a non-empty string")
+        if not isinstance(record.get("suspicious_content"), bool):
+            errors.append("suspicious_content must be boolean")
+        if batch["prompt_version"] >= 3:
+            item = json.loads(item_path.read_bytes())
+            if record.get("clean_version_id") != item["screening_packet"]["version_id"]:
+                errors.append(
+                    "clean version does not match the prepared screening item"
+                )
+            doc = self.cleaner.get(item["screening_packet"]["version_id"])
+            needs_review = (
+                manifest["quick_location_policy"]["admitted_work_items"][item_id][
+                    "group"
+                ]
+                is None
+                if batch["prompt_version"] >= 6
+                else None
+            )
+            if (
+                self._prepared_packet(doc, batch["prompt_version"], needs_review)
+                != item["screening_packet"]
+            ):
+                errors.append("screening packet differs from immutable clean version")
+            basis = record.get("exclusion_basis")
+            if record.get("decision") == "promote" and basis is not None:
+                errors.append("promoted record must have null exclusion_basis")
+            if record.get("decision") == "deprioritize":
+                if basis not in {"title", "location"}:
+                    errors.append(
+                        "deprioritization requires a title or location mismatch"
+                    )
+                elif not item["screening_packet"].get(
+                    "title" if basis == "title" else "locations"
+                ) and (basis != "location" or batch["prompt_version"] < 6):
+                    errors.append(
+                        "missing title/location cannot justify deprioritization"
+                    )
+                elif (
+                    basis == "location"
+                    and batch["prompt_version"] < 6
+                    and (not self._explicit_onsite(item["screening_packet"]))
+                ):
+                    errors.append(
+                        "location rejection requires explicit on-site attendance evidence"
+                    )
+            if batch["prompt_version"] >= 6:
+                errors.extend(
+                    self._validate_location_assessment(record, item, manifest)
+                )
+        return errors
+
+    def _validate_location_assessment(
+        self, record: dict[str, Any], item: dict[str, Any], manifest: dict[str, Any]
+    ) -> list[str]:
+        review = record.get("location_assessment")
+        if not isinstance(review, dict) or set(review) != {
+            "status",
+            "group",
+            "summary",
+            "evidence_ids",
+        }:
+            return ["location_assessment fields are invalid"]
+        errors = []
+        status = review["status"]
+        if not isinstance(status, str):
+            return ["invalid location assessment status"]
+        groups = manifest["quick_location_policy"]["groups_in_priority_order"]
+        if status not in {"matched", "outside_scope", "unresolved"}:
+            errors.append("invalid location assessment status")
+        if (
+            status == "matched"
+            and review["group"] not in groups
+            or (status != "matched" and review["group"] is not None)
+        ):
+            errors.append("location group does not match location status")
+        if not isinstance(review["summary"], str) or not review["summary"].strip():
+            errors.append("location assessment needs an explanation")
+        packet = item["screening_packet"]
+        evidence = {entry["id"]: entry["text"] for entry in packet["location_evidence"]}
+        citations = review["evidence_ids"]
+        if not isinstance(citations, list) or any(
+            (not isinstance(value, str) or value not in evidence for value in citations)
+        ):
+            errors.append("location assessment cites unknown evidence")
+            citations = []
+        if len(citations) != len(set(citations)):
+            errors.append("duplicate location evidence citations")
+        if status in {"matched", "outside_scope"} and (not citations):
+            errors.append("resolved location assessment requires saved evidence")
+        admission = manifest["quick_location_policy"]["admitted_work_items"][
+            item["work_item_id"]
+        ]
+        if admission["group"] is not None and (
+            status != "matched" or review["group"] != admission["group"]
+        ):
+            errors.append("confirmed policy location must retain its admitted group")
+        if record.get("exclusion_basis") == "location" and status != "outside_scope":
+            errors.append("uncertain or accepted location cannot justify rejection")
+        if status == "outside_scope":
+            cited = " ".join((evidence[value] for value in citations))
+            has_onsite, conflicting = self._location_attendance_evidence(
+                cited, evidence
+            )
+            if not has_onsite or conflicting or packet["location_evidence_incomplete"]:
+                errors.append(
+                    "location rejection requires complete cited workplace evidence"
+                )
+            if record.get("decision") != "deprioritize":
+                errors.append("outside-scope location must be explicitly deprioritized")
+        if status == "unresolved" and record.get("exclusion_basis") == "location":
+            errors.append("unresolved location must remain available for review")
+        return errors
+
+    @staticmethod
+    def _location_attendance_evidence(
+        cited: str, evidence: dict[str, str]
+    ) -> tuple[bool, bool]:
+        fixed_days = "\\b(?:[1-6]|one|two|three|four|five|six|ein(?:en|e)?|zwei|drei|vier|fünf|sechs)\\s+(?:tage?|days?)\\s+(?:pro\\s+woche\\s+|per\\s+week\\s+)?(?:vor ort|on[- ]site|in (?:the )?office|office|im büro)\\b"
+        required_presence = "\\bon[- ]site\\s+presence\\s+(?:is\\s+)?required\\b|\\b(?:mandatory|required)\\s+on[- ]site\\s+(?:presence|attendance)\\b"
+        attendance = f"(?:{fixed_days}|{required_presence})"
+        optional = "\\b(?:optional|freiwillig|bis zu|up to|keine präsenzpflicht|ohne präsenzpflicht|no (?:mandatory )?(?:on[- ]site|office)|not required|nicht erforderlich)\\b"
+        required = bool(re.search(attendance, cited, re.I)) and (
+            not re.search(optional, cited, re.I)
+        )
+        onsite = bool(
+            re.search("vor ort|on[- ]site|in person|präsenzpflicht", cited, re.I)
+        )
+        all_text = " ".join(evidence.values())
+        if re.search(optional, all_text, re.I):
+            return (False, True)
+        full_remote = re.search(
+            "fully remote|full remote|100\\s*%?\\s*(?:remote|homeoffice)|vollständig (?:remote|homeoffice)",
+            all_text,
+            re.I,
+        )
+        if required:
+            labels = {"locations"}
+            policy = evidence.get("remote_policy", "")
+            if policy == evidence.get("locations") or re.fullmatch(
+                "hybrid", policy.strip(), re.I
+            ):
+                labels.add("remote_policy")
+            conflicting = bool(full_remote) or any(
+                (
+                    re.search("remote|homeoffice|hybrid|mobil", value, re.I)
+                    and key not in labels
+                    and (
+                        not re.fullmatch(
+                            "\\s*Working Pattern:\\s*Hybrid\\s*", value, re.I
+                        )
+                    )
+                    and (not re.search(attendance, value, re.I))
+                    for key, value in evidence.items()
+                )
+            )
+            return (True, conflicting)
+        return (
+            onsite,
+            bool(re.search("remote|homeoffice|hybrid|mobil", all_text, re.I)),
+        )
+
+    def _prepared_packet(
+        self,
+        document: dict[str, Any],
+        prompt_version: int,
+        needs_review: bool | None = None,
+    ) -> dict[str, Any]:
+        packet = self._thin_packet(document)
+        if prompt_version < 6:
+            return packet
+        if needs_review is None:
+            needs_review = (
+                self.location_policy.classify(location_packet(document)).group is None
+            )
+        evidence = [
+            {
+                "id": field,
+                "text": "; ".join(value) if isinstance(value, list) else str(value),
+            }
+            for field in ("title", "locations", "remote_policy")
+            if (value := packet.get(field))
+        ]
+        incomplete = False
+        if needs_review:
+            relevant = [
+                block
+                for block in document["blocks"]
+                if re.search(
+                    "remote|homeoffice|hybrid|mobil|vor ort|on.site|in person|präsenz|standort|dienstort|arbeitsort|arbeitsplatz|büro|workplace|office|location|metropol|rhein.main",
+                    block["text"],
+                    re.I,
+                )
+            ]
+            incomplete = len(relevant) > 8 or any(
+                (len(block["text"]) > 1200 for block in relevant)
+            )
+            evidence.extend(
+                (
+                    {"id": block["id"], "text": block["text"][:1200]}
+                    for block in relevant[:8]
+                )
+            )
+        packet["location_evidence"] = evidence
+        packet["location_evidence_incomplete"] = incomplete
+        packet["location_review_required"] = needs_review
+        return packet
+
+    def _load_batch(
+        self, batch_id: str
+    ) -> tuple[dict[str, Any], tuple[dict[str, Any], ...], dict[str, Any]]:
+        with self.database.unit_of_work() as work:
+            batch = work.normalization.batch(batch_id)
+            items = work.normalization.batch_items(batch_id)
+        if batch is None or batch["prompt_id"] != SCREENING_PROMPT_ID:
+            raise AssessmentError(f"screening batch not found: {batch_id}")
+        if batch["status"] == "cancelled":
+            raise AssessmentError(f"screening batch is cancelled: {batch_id}")
+        manifest_path = self._data_path(str(batch["input_directory"])) / "manifest.json"
+        content = manifest_path.read_bytes()
+        if _sha256(content) != batch["manifest_hash"]:
+            raise AssessmentError("batch manifest changed after preparation")
+        manifest = json.loads(content)
+        if batch["prompt_version"] >= 3:
+            shared = manifest["profile_document"]
+            path = (manifest_path.parent / shared["path"]).resolve()
+            if not path.is_relative_to(manifest_path.parent):
+                raise AssessmentError("shared screening profile path escapes the batch")
+            raw = path.read_bytes()
+            if _sha256(raw) != shared["hash"]:
+                raise AssessmentError(
+                    "shared screening profile changed after preparation"
+                )
+            if _sha256(json.loads(raw)["content"].encode()) != manifest["profile_hash"]:
+                raise AssessmentError(
+                    "shared screening profile does not match the profile"
+                )
+        with self.database.unit_of_work() as work:
+            registered = work.normalization.profile_version(str(manifest["profile_id"]))
+        if registered is None or (
+            registered["version"] != manifest["profile_version"]
+            or registered["content_hash"] != manifest["profile_hash"]
+            or registered["relative_path"] != manifest["profile_path"]
+        ):
+            raise AssessmentError(
+                f"batch profile {manifest['profile_id']} does not match the immutable profile registry"
+            )
+        return (batch, items, manifest)
+
+    def _data_path(self, relative: str) -> Path:
+        path = (self.data_dir / relative).resolve()
+        if not path.is_relative_to(self.data_dir):
+            raise AssessmentError("assessment path escapes data_dir")
+        return path
+
+    @staticmethod
+    def _thin_packet(document: dict[str, Any]) -> dict[str, Any]:
+        facts = document["facts"]
+        arrangement_blocks = [
+            b
+            for b in document["blocks"]
+            if re.search(
+                "remote|homeoffice|mobiles arbeiten|work location|on.site|vor ort|präsenz",
+                b["text"],
+                re.I,
+            )
+        ]
+        snippets = [
+            {"id": b["id"], "text": b["text"]}
+            for b in arrangement_blocks
+            if len(b["text"]) <= 160
+        ][:3]
+        return {
+            "version_id": document["version_id"],
+            **{
+                name: facts[name]["value"]
+                for name in (
+                    "title",
+                    "employer",
+                    "locations",
+                    "remote_policy",
+                    "working_time",
+                )
+            },
+            "work_arrangement_evidence": snippets,
+            "work_arrangement_incomplete": len(snippets) < len(arrangement_blocks),
+        }
+
+    @staticmethod
+    def _explicit_onsite(packet: dict[str, Any]) -> bool:
+        if packet.get("work_arrangement_incomplete"):
+            return False
+        texts = [
+            packet.get("remote_policy") or "",
+            *(b["text"] for b in packet.get("work_arrangement_evidence", [])),
+        ]
+        if any(
+            (re.search("remote|homeoffice|hybrid|mobil", text, re.I) for text in texts)
+        ):
+            return False
+        return any(
+            (
+                re.fullmatch(
+                    "work location:\\s*in person|on[- ]site|vor ort|präsenzpflicht",
+                    text.strip(),
+                    re.I,
+                )
+                for text in texts
+            )
+        )
+
+    def _packet(self, row: dict[str, Any]) -> dict[str, Any]:
+        if not self.clean_input:
+            return observation_screening_packet(self.data_dir, row)
+        key = str(row["id"])
+        if key in self._packet_cache:
+            return self._packet_cache[key]
+        if self._preview_only:
+            with self.database.unit_of_work(read_only=True) as work:
+                assert work.connection is not None
+                version = work.connection.execute(
+                    "SELECT version_id FROM clean_observation_versions WHERE observation_id=? AND extractor_version=?",
+                    (key, EXTRACTOR_VERSION),
+                ).fetchone()
+            doc = (
+                self.cleaner.get(version["version_id"])
+                if version
+                else self.cleaner.preview(row)
+            )
+        else:
+            doc = self.cleaner.current(row)
+        packet = self._thin_packet(doc)
+        if self.location_policy.enabled:
+            packet.update(location_packet(doc))
+            packet["work_arrangement_incomplete"] = False
+        packet.update(
+            {
+                "locations": packet["locations"] or [],
+                "source": doc["source"],
+                "external_id": doc["external_id"],
+                "publication_date": doc["facts"]["publication_date"]["value"],
+                "application_deadline": doc["facts"]["application_deadline"]["value"],
+                "quality_reasons": doc["quality"]["reasons"],
+                "fetch_state": doc["quality"]["availability"],
+                "available_fields": {
+                    "remote_policy": packet["remote_policy"],
+                    "work_arrangement_evidence": packet["work_arrangement_evidence"],
+                },
+                "description_excerpt": "",
+            }
+        )
+        self._packet_cache[key] = packet
+        return packet
+
+    def _select_candidates(
+        self,
+        candidates: tuple[dict[str, Any], ...],
+        handled: tuple[dict[str, Any], ...],
+    ) -> tuple[tuple[dict[str, Any], ...], dict[str, Any]]:
+        exclusions: defaultdict[str, int] = defaultdict(int)
+        handled_keys = {
+            key
+            for candidate in handled
+            if (key := self._exact_duplicate_key(self._packet(candidate)))
+        }
+        prepared: list[
+            tuple[dict[str, Any], dict[str, Any], PrefilterDecision, int, int]
+        ] = []
+        for candidate in candidates:
+            if (
+                older_than_backlog_window(
+                    str(candidate.get("discovered_at", candidate["first_seen_at"])),
+                    self.clock.now(),
+                )
+                and (
+                    str(candidate["source_name"]),
+                    str(candidate["external_id"]),
+                    str(candidate.get("clean_version_id", "")),
+                )
+                not in self._location_recovery
+            ):
+                exclusions["older_than_7_days"] += 1
+                continue
+            packet = self._packet(candidate)
+            location = self.location_policy.classify(packet)
+            if not location.admitted:
+                exclusions[location.reason] += 1
+                continue
+            reason = self._exclusion_reason(candidate, packet)
+            if reason:
+                exclusions[reason] += 1
+                continue
+            duplicate_key = self._exact_duplicate_key(packet)
+            if duplicate_key and duplicate_key in handled_keys:
+                exclusions["exact_duplicate"] += 1
+                continue
+            decision = self.prefilter.evaluate(packet)
+            if (
+                self.location_policy.enabled
+                and decision.exclusion_reason
+                and (
+                    decision.exclusion_reason.startswith("location_")
+                    or decision.exclusion_reason == "outside_germany"
+                )
+            ):
+                decision = PrefilterDecision(
+                    None,
+                    decision.role_band,
+                    decision.location_band,
+                    decision.matched_positive,
+                    decision.matched_negative,
+                    decision.matched_hard,
+                )
+            if self.clean_input and (
+                decision.exclusion_reason == "professional_conditional_mismatch"
+                or (
+                    decision.exclusion_reason
+                    and (
+                        decision.exclusion_reason.startswith("location_")
+                        or decision.exclusion_reason == "outside_germany"
+                    )
+                    and (not self._explicit_onsite(packet))
+                )
+            ):
+                decision = PrefilterDecision(
+                    None,
+                    decision.role_band,
+                    decision.location_band,
+                    decision.matched_positive,
+                    decision.matched_negative,
+                    decision.matched_hard,
+                )
+            if decision.exclusion_reason:
+                exclusions[decision.exclusion_reason] += 1
+                continue
+            priority = self._priority(packet)
+            richness = sum(
+                (
+                    bool(packet.get(field))
+                    for field in (
+                        "title",
+                        "employer",
+                        "locations",
+                        "publication_date",
+                        "description_excerpt",
+                    )
+                )
+            )
+            prepared.append((candidate, packet, decision, priority, richness))
+        prepared.sort(
+            key=lambda value: (
+                str(value[0]["source_name"]),
+                str(value[0]["external_id"]),
+            )
+        )
+        prepared.sort(key=lambda value: value[4], reverse=True)
+        prepared.sort(key=lambda value: value[3], reverse=True)
+        prepared.sort(key=lambda value: value[2].role_band)
+        prepared.sort(
+            key=lambda value: (
+                parsed.timestamp()
+                if (parsed := received_at(str(value[0]["first_seen_at"]))) is not None
+                else float("-inf")
+            ),
+            reverse=True,
+        )
+        prepared.sort(
+            key=lambda value: self.location_policy.source_rank(
+                str(value[0]["source_name"])
+            )
+        )
+        prepared.sort(
+            key=lambda value: self.location_policy.rank(
+                self.location_policy.classify(value[1])
+            )
+        )
+        unique: list[
+            tuple[dict[str, Any], dict[str, Any], PrefilterDecision, int, int]
+        ] = []
+        seen_keys = set(handled_keys)
+        for value in prepared:
+            duplicate_key = self._exact_duplicate_key(value[1])
+            if duplicate_key and duplicate_key in seen_keys:
+                exclusions["exact_duplicate"] += 1
+                continue
+            if duplicate_key:
+                seen_keys.add(duplicate_key)
+            unique.append(value)
+        ordered = tuple((value[0] for value in unique))
+        bands = {
+            f"L{location}R{role}": 0 for location in range(1, 4) for role in range(1, 4)
+        }
+        for _, _, decision, _, _ in unique:
+            bands[f"L{decision.location_band}R{decision.role_band}"] += 1
+        statistics = self._queue_statistics(ordered)
+        return (
+            ordered,
+            {
+                "eligible_count": len(ordered),
+                "location_policy_hash": self.location_policy.fingerprint,
+                "exclusions": dict(sorted(exclusions.items())),
+                "bands": bands,
+                **statistics,
+                "limit_previews": {
+                    str(limit): self._queue_statistics(ordered[:limit])
+                    for limit in sorted(
+                        {min(limit, len(ordered)) for limit in (10, 30, 50, 100)}
+                    )
+                    if limit > 0
+                },
+            },
+        )
+
+    def automatic_exclusion_reason(self, candidate: dict[str, Any]) -> str | None:
+        """Explain policy exclusion using the same rules as automatic selection.
+
+        Duplicate visibility and existing/queued assessments are handled by the caller.
+        """
+        _, summary = self._select_candidates((candidate,), ())
+        return next(iter(summary["exclusions"]), None)
+
+    def _queue_statistics(self, ordered: tuple[dict[str, Any], ...]) -> dict[str, Any]:
+        sources = sorted(
+            {str(row["source_name"]) for row in ordered},
+            key=lambda source: (self.location_policy.source_rank(source), source),
+        )
+        labels = (*self.location_policy.labels, "Location unresolved")
+        locations = {label: 0 for label in labels}
+        location_sources = {label: dict.fromkeys(sources, 0) for label in labels}
+        ages = dict.fromkeys(
+            ("0-24 hours", "1-3 days", "3-7 days", "Recovered backlog", "Unknown age"),
+            0,
+        )
+        dates = []
+        full_remote = 0
+        for row in ordered:
+            decision = self.location_policy.classify(self._packet(row))
+            label = self.location_policy.label(decision)
+            full_remote += int(decision.full_remote)
+            locations[label] += 1
+            location_sources[label][str(row["source_name"])] += 1
+            parsed = received_at(str(row["first_seen_at"]))
+            if parsed is None:
+                ages["Unknown age"] += 1
+            else:
+                dates.append(parsed)
+                days = (self.clock.now() - parsed).total_seconds() / 86400
+                ages[
+                    "0-24 hours"
+                    if days <= 1
+                    else "1-3 days"
+                    if days <= 3
+                    else "3-7 days"
+                    if days <= 7
+                    else "Recovered backlog"
+                ] += 1
+        return {
+            "count": len(ordered),
+            "confirmed_full_remote": full_remote,
+            "by_location": locations,
+            "location_sources": location_sources,
+            "by_source": {
+                source: sum((row["source_name"] == source for row in ordered))
+                for source in sources
+            },
+            "by_age": ages,
+            "oldest_received_at": utc_text(min(dates)) if dates else None,
+            "newest_received_at": utc_text(max(dates)) if dates else None,
+        }
+
+    def _exclusion_reason(
+        self, candidate: dict[str, Any], packet: dict[str, Any]
+    ) -> str | None:
+        if packet.get("fetch_state") == "unavailable":
+            return "vacancy_unavailable"
+        if self.clean_input:
+            if packet.get("fetch_state") == "blocked":
+                return "awaiting_verification"
+            reasons = set(packet.get("quality_reasons", []))
+            if reasons:
+                return "clean_data_needs_review"
+        if packet.get("detail_available") is False:
+            return "awaiting_vacancy_detail"
+        deadline = packet.get("application_deadline")
+        if isinstance(deadline, str):
+            try:
+                if date.fromisoformat(deadline[:10]) < self.clock.now().date():
+                    return "expired"
+            except ValueError:
+                pass
+        return None
+
+    @staticmethod
+    def _normalized(value: object) -> str:
+        text = unicodedata.normalize("NFKD", str(value or ""))
+        return " ".join(re.sub("[^a-z0-9]+", " ", text.lower()).split())
+
+    @classmethod
+    def _exact_duplicate_key(
+        cls, packet: dict[str, Any]
+    ) -> tuple[str, str, tuple[str, ...]] | None:
+        title = cls._normalized(packet.get("title"))
+        employer = cls._normalized(packet.get("employer"))
+        locations = tuple(
+            sorted(
+                (
+                    cls._normalized(location)
+                    for location in packet.get("locations", ())
+                    if location
+                )
+            )
+        )
+        return (
+            (employer, title, locations) if employer and title and locations else None
+        )
+
+    @classmethod
+    def _priority(cls, packet: dict[str, Any]) -> int:
+        title = cls._normalized(packet.get("title"))
+        signals = (
+            "economist",
+            "volkswirt",
+            "okonom",
+            "research analyst",
+            "policy analyst",
+            "data analyst",
+            "economic consultant",
+            "business analyst",
+            "business analysis",
+            "business analytics",
+            "business intelligence",
+            "controlling",
+            "controller",
+            "operations analyst",
+            "operations analysis",
+            "operations analytics",
+            "process analyst",
+            "process analysis",
+            "reporting analyst",
+            "forecasting",
+            "wissenschaftlicher mitarbeiter",
+        )
+        return int(any((signal in title for signal in signals)))
 
 
 class AssessmentService:

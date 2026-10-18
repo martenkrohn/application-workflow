@@ -1,0 +1,14 @@
+# Fictional demonstration policy; independent of private preferences.
+[professional]
+positive_phrases = ["analyst", "research", "workflow", "data"]
+hard_phrases = ["surgeon"]
+hard_prefixes = ["chief medical"]
+conditional_negative_phrases = ["senior"]
+priority_negative_phrases = ["principal"]
+
+[location]
+excluded_cities = ["Excluded Example City"]
+southern_states = ["Excluded Example Region"]
+southern_postcode_prefixes = ["00"]
+southern_major_cities = ["Example Metro"]
+remote_phrases = ["remote", "home office"]

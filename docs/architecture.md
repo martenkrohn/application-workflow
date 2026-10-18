@@ -7,11 +7,13 @@
 | Domain | Source items, quality checks, immutable clean vacancy documents | Transferred; website-specific branches and field aliases removed |
 | Collection | Per-source attempts, artifacts, observations, checkpoints and failure recovery | Existing collection service |
 | Infrastructure | SQLite repositories, 20 migrations, artifact hashes, locking and local configuration | Existing implementation; personal mock address and provider priorities removed |
-| Assessment | Profile snapshots, bounded manifests, input identities, citations, validation and persistent evaluations | Existing detailed-assessment service; neutral profile default, quick-screening class excluded |
+| Assessment | Profile snapshots, bounded manifests, input identities, citations, validation and persistent evaluations | Existing detailed-assessment service; neutral profile default, provider-specific fetch-state integration removed |
 | Portfolio orchestration | Exact human selection, strict whole-batch import, deterministic simulation and decisions | Added for the review edition |
 | Source adapter | Parser for a self-authored HTML fixture | Added; same original SourceAdapter/SourceItem boundary |
 | Mail demonstration | Fictional message handoff, identity and quotation validation, stored proposals | Added; uses the classification categories of the original workflow, not its production mailbox connector |
-| Dashboard / CLI | Local review and explicit preparation, validation, import and decisions | Added as a small provider-neutral interface |
+| Dashboard | Quick review, assessment queue, detailed review, filters, dialogs and table interactions | Original frontend, dashboard service, queue service and grouping; personal labels and source-specific rules removed |
+| Application workspaces | Human starts a folder, collaborates on documents, tracks decisions and moves folders by status | Original decision/move lifecycle; private document scaffolding replaced with fictional Markdown materials |
+| CLI | Reproducible demo and explicit prepare, validate and import commands | Small entry point added for the portfolio |
 
 This is an adapted runnable slice, not a copy of the complete private project. The private project remains unchanged. File-level hashes and transfer notes are retained locally outside version control.
 
@@ -44,3 +46,9 @@ Runtime code uses only Python's standard library. The installed package includes
 - The local dashboard is a single-user review tool and binds only to loopback.
 
 See [source adapters](source-adapters.md) and [human/agent interaction](human-ai-workflow.md).
+
+## Dashboard preservation
+
+The portfolio uses the working project's `web/static/index.html`, `app.js` and `styles.css`, `web/dashboard.py`, `application/dashboard.py` and `application/assessment_queue.py`. It keeps the original three-view review flow. Adaptations are limited to neutral labels, fictional source links, isolated runtime paths, agent-neutral handoff wording and local HTTP safeguards. Private folder discovery is omitted; newly created demo folders are registered directly.
+
+Quick priorities are labelled presets, not validated agent outputs. Detailed example assessments pass through the normal preparation/validation/import contract. Mail proposals remain a separate CLI demonstration and are not presented as an original dashboard feature.

@@ -24,14 +24,16 @@ def test_demo_uses_original_services_and_is_idempotent(
 ) -> None:
     first = workflow.demo()
     second = workflow.demo()
-    assert first["vacancies"] == 3
+    assert first["vacancies"] == 6
     assert second["collection"]["sources"][0]["observations_unchanged"] == 3
     state = workflow.snapshot()
     assert len(state["batches"]) == 1 and len(state["email"]) == 2
-    assert all(v["simulated"] for v in state["vacancies"])
+    assert sum(v["simulated"] for v in state["vacancies"]) == 3
     assert all(v["human_status"] == "new" for v in state["vacancies"])
     assert {
-        v["assessment"]["evaluation"]["recommendation"] for v in state["vacancies"]
+        v["assessment"]["evaluation"]["recommendation"]
+        for v in state["vacancies"]
+        if v["assessment"]
     } == {"high", "medium", "reject"}
 
 

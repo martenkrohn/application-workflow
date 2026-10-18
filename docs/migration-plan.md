@@ -10,7 +10,8 @@ Prepared on 18 October 2026 in a separate local repository. The production job-s
 - Replaced personal defaults with an explicitly invented profile and example addresses.
 - Added a working local HTML adapter, an extension factory boundary and self-authored fixtures.
 - Added bounded human selection, immutable agent handoffs, validation and explicit import.
-- Added a local dashboard and a separate synthetic mail proposal handoff.
+- Preserved the working project's dashboard, review queue, grouping and decision/folder lifecycle; replaced private document scaffolding with fictional materials.
+- Added a separate synthetic mail proposal handoff and a recruiter walkthrough.
 - Labelled all deterministic example outputs as simulated.
 - Documented origin, AI assistance, implemented scope and limitations.
 

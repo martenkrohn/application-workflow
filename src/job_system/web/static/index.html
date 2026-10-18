@@ -1,14 +1,90 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Application Workflow · Review workspace</title><link rel="stylesheet" href="/style.css"></head>
-<body><header><div><p class="eyebrow">HUMAN + AGENT + APPLICATION</p><h1>Application Workflow</h1>
-<p class="intro">Collect evidence. Prepare bounded work. Keep the decision human.</p></div><span class="edition">Portfolio review edition</span></header>
-<main><aside class="notice">Fictional vacancies and messages. Example agent results are explicitly labelled as simulated. No application is sent.</aside>
-<section class="steps" aria-label="Workflow roles"><div><strong>01 / Application</strong><span>Collect and preserve evidence</span></div><div><strong>02 / Human</strong><span>Choose the work to assess</span></div><div><strong>03 / Agent</strong><span>Return structured judgements</span></div><div><strong>04 / Application + human</strong><span>Validate, review and decide</span></div></section>
-<div class="tabs" role="tablist" aria-label="Workspace"><button role="tab" aria-selected="true" data-tab="vacancies">Vacancies</button><button role="tab" aria-selected="false" data-tab="batches">Agent handoffs</button><button role="tab" aria-selected="false" data-tab="email">Mail review</button></div>
-<p id="message" role="status" aria-live="polite"></p>
-<section id="vacancies"><div class="section-heading"><div><h2>Review your opportunities</h2><p>Select ready, unassessed vacancies to prepare an agent task. Preparing never starts an agent.</p></div><button id="prepare">Prepare selected</button></div><p id="summary"></p><div id="jobs" class="cards"></div></section>
-<section id="batches" hidden><h2>Prepared agent handoffs</h2><p>Open HANDOFF.md beside each manifest in your agent workspace. After the agent writes its results, validate and explicitly import them here.</p><div id="batch-list" class="cards"></div></section>
-<section id="email" hidden><h2>Mail classification proposals</h2><p>Evidence-backed proposals remain separate from human application decisions.</p><div id="mail-list" class="cards"></div></section>
-</main><footer>Runs locally · SQLite evidence and history · Versioned inputs · Agent-neutral file handoff</footer>
-<script src="/app.js" defer></script></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="dashboard-token" content="__CSRF_TOKEN__">
+  <title>Job application dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="masthead">
+    <div>
+      <p class="eyebrow">LOCAL VACANCY WORKSPACE</p>
+      <h1>Job application dashboard</h1>
+      <p class="subtitle">Review assessments, filter the shortlist, and start applications. Fictional data; simulated assessments.</p>
+    </div>
+    <div class="header-actions">
+      <button id="theme" class="secondary" type="button">Dark mode</button>
+      <button id="refresh" class="secondary" type="button">Refresh data</button>
+    </div>
+  </header>
+
+  <main>
+    <nav class="queue-tabs" aria-label="Review views">
+      <button type="button" data-view="quick" class="secondary">Quick review</button>
+      <button type="button" data-view="queue" class="secondary">Assessment queue</button>
+      <button type="button" data-view="detailed">Detailed review</button>
+    </nav>
+    <section id="metrics" class="metrics" aria-label="Vacancy counts"></section>
+
+    <section class="controls" aria-label="Filters">
+      <label class="search">Search<input id="search" type="search" placeholder="Title, employer, gap, location…"></label>
+      <label>View<select id="view"><option value="detailed">Detailed review</option><option value="quick">Quick review</option><option value="queue">Assessment queue</option></select></label>
+      <label>First scraped<select id="scrapeDay"><option value="">All scrape days</option></select></label>
+      <label>Minimum fit<input id="minFit" type="number" step="any" value="65"></label>
+      <fieldset id="locationBuckets" class="location-buckets">
+        <legend>Location priorities</legend>
+        <div id="locationBucketOptions" class="bucket-options"></div>
+        <p class="subtle">Show any selected bucket. All enabled by default.</p>
+      </fieldset>
+      <label class="check"><input id="hideExpired" type="checkbox" checked>Hide expired</label>
+    </section>
+
+    <section class="results">
+      <div class="results-head"><h2 id="tableTitle">Detailed review</h2><div class="results-tools"><span id="resultCount"></span><button id="resetColumns" class="small secondary" type="button">Reset column widths</button></div></div>
+      <p class="subtle">All scrape dates are available. Highest scores appear first. Quick priority ranks title/location plausibility; detailed fit reflects the full assessment.</p>
+      <div id="quickQueue" class="actions" hidden>
+        <button id="openQueue" type="button">Review assessment queue</button>
+        <span class="subtle">Queue individual vacancies here, then review suggestions and prepare batches in the Assessment queue.</span>
+      </div>
+      <div id="assessmentQueue" hidden>
+        <p>Choose and review vacancies here. Preparation uses saved complete descriptions and saves batches locally. Start the assessment yourself in an agent workspace.</p>
+        <div id="queuePool" class="subtle"></div>
+        <div class="actions queue-controls">
+          <label>Total for this run<input id="queueCount" type="number" min="0" step="1" value="20"></label>
+          <button id="previewQueue" type="button">Preview selection</button>
+          <button id="saveQueue" type="button" disabled>Apply selection changes</button>
+          <button id="discardQueue" class="secondary" type="button" disabled>Discard changes</button>
+          <button id="fillQueue" class="secondary" type="button">Fill remaining places</button>
+          <button id="prepareQueue" type="button">Prepare batches</button>
+        </div>
+        <p id="queueSummary" role="status"></p>
+        <p class="subtle">Checkbox changes are provisional. Apply selection changes to save them together before filling places or preparing batches. Unchecking leaves a place empty until you fill it. Suggestions follow location group, quick priority, then recency. Filters above apply to review tables, not this queue.</p>
+        <div id="unavailableManual"></div>
+        <div id="preparedBatches"></div>
+      </div>
+      <div id="notice" role="status"></div>
+      <div class="table-wrap">
+        <table>
+          <thead id="tableHead"></thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="details"><button class="dialog-close" aria-label="Close">×</button><div id="detailContent"></div></dialog>
+  <dialog id="workspaceDialog">
+    <form id="workspaceForm">
+      <button type="button" class="dialog-close" aria-label="Close">×</button>
+      <h2>Start application workspace</h2>
+      <input id="workspaceGroup" type="hidden">
+      <label>Employer and short job name<input id="workspaceSlug" required pattern="[a-z0-9][a-z0-9-]{1,79}" placeholder="example-research-analyst"></label>
+      <p class="hint">Use a short <code>employer-job</code> name. The permanent numerical ID is added automatically.</p>
+      <button type="submit">Create workspace</button>
+    </form>
+  </dialog>
+  <script src="/app.js" defer></script>
+</body>
+</html>

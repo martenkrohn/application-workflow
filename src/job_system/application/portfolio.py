@@ -108,6 +108,9 @@ class PortfolioWorkflow:
             adapter = LocalHTMLSource(
                 self._inside(Path(config["fixture"])), config["name"], config["origin"]
             )
+        return self._collect(adapter)
+
+    def _collect(self, adapter: Any) -> dict[str, Any]:
         service = CollectionService(
             self.settings,
             self.database,
@@ -123,7 +126,10 @@ class PortfolioWorkflow:
             assert work.connection is not None
             rows = work.connection.execute("""
                 SELECT cv.document_json,
-                       COALESCE(d.status,'new') AS human_status,
+                       COALESCE((SELECT vd.status FROM vacancy_group_members gm
+                         JOIN vacancy_review_decisions vd ON vd.group_id=gm.group_id
+                         WHERE gm.source_name=cc.source_name AND gm.external_id=cc.external_id
+                         ORDER BY vd.updated_at DESC LIMIT 1),d.status,'new') AS human_status,
                        (SELECT result_json FROM clean_assessment_history
                         WHERE version_id=cv.id ORDER BY created_at DESC LIMIT 1) AS assessment_json
                 FROM clean_vacancy_current cc
@@ -306,13 +312,20 @@ class PortfolioWorkflow:
             (v["source"], v["external_id"]) for v in self.vacancies()
         }:
             raise ValueError("unknown vacancy")
+        from job_system.application.applications import ApplicationWorkspaceService
+
+        profile = self.assessment.ensure_profile(PROFILE)
         with self.database.unit_of_work() as work:
-            assert work.connection is not None
-            work.connection.execute(
-                "INSERT INTO portfolio_decisions VALUES (?,?,?,?) "
-                "ON CONFLICT(source,external_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at",
-                (source, external_id, status, utc_text(self.clock.now())),
+            group_id = work.reviews.ensure_group(
+                ((source, external_id),),
+                self.ids.new("vgrp"),
+                utc_text(self.clock.now()),
             )
+        ApplicationWorkspaceService(
+            self.settings.data_dir, self.database
+        ).mark_by_group(
+            group_id, profile.profile_id, status, source="manual", note=None
+        )
         return {"source": source, "external_id": external_id, "human_status": status}
 
     def snapshot(self) -> dict[str, Any]:
@@ -346,18 +359,75 @@ class PortfolioWorkflow:
         selection = [
             {"source": v["source"], "external_id": v["external_id"]}
             for v in jobs
-            if v["source"] == "demo-html" and not v["assessment"]
+            if v["source"] == "demo-html"
+            and not v["assessment"]
+            and v["external_id"]
+            in {"research-analyst", "workflow-associate", "principal-engineer"}
         ]
         if selection:
             prepared = self.prepare(selection)
             self.simulate(prepared["batch_id"])
             self.finish(prepared["batch_id"])
+        # Extra fictional vacancies remain in quick review, ready for a real human handoff.
+        shortlist = self._collect(
+            LocalHTMLSource(
+                self.root / "examples/shortlist.html",
+                "demo-html",
+                "https://careers.example.invalid",
+            )
+        )
+        self._seed_quick_examples()
         from job_system.application.mail_demo import demonstrate_mail
 
         demonstrate_mail(self)
         return {
             "collection": collection,
+            "shortlist_collection": shortlist,
             "vacancies": len(self.vacancies()),
             "simulated_selection_and_results": True,
-            "dashboard": "python -m job_system dashboard serve",
+            "dashboard": self.command_prefix + " dashboard serve",
         }
+
+    def _seed_quick_examples(self) -> None:
+        """Labelled fixture priorities; do not overwrite an existing agent assessment."""
+        profile = self.assessment.ensure_profile(PROFILE)
+        examples = {
+            "policy-assistant": 84,
+            "data-quality-analyst": 79,
+            "research-coordinator": 61,
+        }
+        timestamp = utc_text(self.clock.now())
+        with self.database.unit_of_work() as work:
+            rows = work.normalization.screening_dashboard(None, None)
+            for row in rows:
+                if (
+                    row["source_name"] != "demo-html"
+                    or row["external_id"] not in examples
+                    or row["screening_score"] is not None
+                ):
+                    continue
+                score = examples[row["external_id"]]
+                work.normalization.upsert_screening(
+                    {
+                        "id": self.ids.new("screening"),
+                        "observation_id": row["id"],
+                        "source_name": row["source_name"],
+                        "external_id": row["external_id"],
+                        "artifact_hash": row["artifact_hash"],
+                        "profile_id": profile.profile_id,
+                        "screening_cycle_id": "simulated-demo",
+                        "input_hash": row["artifact_hash"],
+                        "suitability_score": score,
+                        "assessment_confidence": 70,
+                        "decision": "promote" if score >= 75 else "deprioritize",
+                        "summary": "Simulated quick-review priority; no model was invoked.",
+                        "result_json": json.dumps(
+                            {"simulated": True, "model_id": MODEL_EXAMPLE}
+                        ),
+                        "prompt_id": "vacancy-screening",
+                        "prompt_version": 1,
+                        "model_id": MODEL_EXAMPLE,
+                        "created_at": timestamp,
+                        "updated_at": timestamp,
+                    }
+                )

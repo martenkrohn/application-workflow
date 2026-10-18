@@ -4,8 +4,8 @@ Validated on 18 October 2026, using Python 3.13 on Windows.
 
 | Check | Observed result |
 | --- | --- |
-| Automated tests | 44 passed: transferred collection/storage tests and portfolio boundary tests |
-| Default demonstration | Three fictional HTML vacancies collected, normalized, assessed with simulated outputs and imported; two fictional mail proposals stored |
+| Automated tests | 46 passed: transferred collection/storage tests, portfolio boundaries and original dashboard integration |
+| Default demonstration | Six fictional HTML vacancies collected and normalized; three detailed assessments imported through validation, three labelled quick-review presets; two fictional mail proposals stored |
 | Repeated collection | Existing records retained; unchanged observations recognised |
 | Human selection | Exact selected item count; no agent or output automatically created |
 | Assessment validation | Bad identities, duplicate output, invalid citations, inconsistent score bands, modified inputs and profile snapshots rejected |
@@ -14,9 +14,10 @@ Validated on 18 October 2026, using Python 3.13 on Windows.
 | Private adapter boundary | An importable test adapter factory successfully collected neutral records |
 | Mail proposals | Input hashes, classification, confidence and actual quotations checked; incomplete batches refused |
 | Local HTTP API | Same-origin mutations and loopback host enforcement checked |
-| Browser, 390px / 1280px | Selection, handoff, validate/import, persisted decision and mail tabs passed; no JS errors or horizontal overflow |
+| Original dashboard, 390px / 1280px | Original three views, details, filters, theme toggle, manual queue, preview, checkbox edits, fill, prepare, source links and application folders passed; no JavaScript errors |
+| Workspace lifecycle | Workspace creation, fictional documents, persisted decisions, status-driven folder move and path rejection checked |
 | Packaging | Wheel built without network; installed in a fresh venv; installed CLI demo passed |
-| Fresh checkout export | The exact 85 selected repository files run the demo with isolated Python; no private working files required |
+| Fresh checkout export | Selected repository files run independently; no private working files required |
 | Repository content | Current files and all preparation commits checked for production portal names, credential patterns and personal addresses/paths; no matches |
 | Package resources | Dashboard assets and all migrated schema files available from the installed wheel |
 
