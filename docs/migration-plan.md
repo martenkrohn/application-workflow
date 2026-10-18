@@ -17,6 +17,7 @@ Das private Arbeitsprojekt bleibt der Ort für den tatsächlichen Bewerbungsallt
 
 | Bereich | Vorbereitung |
 | --- | --- |
+| Quellenabstraktion | Konkrete Domains und Website-Adapter privat halten; Sonderfälle aus gemeinsamer Fachlogik trennen; neutrale Demo-Quelle verwenden |
 | SQLite und Sammlung | Migrationen auf persönliche Vorgaben prüfen; mit leerer Demo-Datenbank und Fake-Quelle starten |
 | Konfiguration | Persönliche Profilpfade und Kontoeinstellungen durch ausdrücklich fiktive Beispiele ersetzen |
 | Bewertungen | Fachlogik, Ergebnisschemata und benötigte Prompts zusammen übernehmen; vorhandene Validierung verwenden |
@@ -42,3 +43,7 @@ Die lokale Musterprüfung liefert nur Prüfhinweise. Ein fehlender Treffer ist k
 ## Bevor GitHub eingerichtet wird
 
 Die ausgewählten Dateien und sämtliche Commits dieser neuen Historie prüfen, das synthetische Beispiel zu einem zusammenhängenden Demonstrationsablauf ausbauen, passende bestehende Tests übernehmen und die Lizenzierung festlegen. Derzeit gibt es keinen Remote und keinen automatischen Upload.
+
+## Quellen und öffentliche Darstellung
+
+Die [neutrale Quellenanbindung](source-adapters.md) beschreibt den vorgesehenen Ansatz: allgemeiner Workflow und synthetische Beispiele im öffentlichen Projekt, konkrete Website-Adapter separat. Die vorhandene `SourceAdapter`-Schnittstelle ist zusätzlich übernommen. Domainersetzung allein ersetzt keine Entkopplung der Parser.

@@ -5,7 +5,7 @@
 | Schicht | Aufgabe | Stand in dieser Projektfassung |
 | --- | --- | --- |
 | Domain | Datenmodelle, Qualitäts- und Auswahlregeln | Grundlegende Modelle übernommen |
-| Application | Sammlung, Bewertung, E-Mail-Einordnung und Bewerbungsverwaltung | Noch zu prüfen und zu übernehmen |
+| Application | Sammlung, Bewertung, E-Mail-Einordnung und Bewerbungsverwaltung | Schnittstellen übernommen; Anwendungslogik noch offen |
 | Adapters | Stellenquellen, Browser und Gmail | Nur vorhandene Fake-Quelle übernommen |
 | Infrastructure | SQLite, Migrationen, Artefakte, Konfiguration und LLM-Anbindung | Noch zu prüfen und zu übernehmen |
 | Web / CLI | Lokales Dashboard und Bedienung | Noch zu prüfen und zu übernehmen |
@@ -22,3 +22,7 @@ Das erste Beispiel verwendet dieselbe vorhandene Fake-Quelle und dieselben Daten
 5. Die E-Mail-Klassifikation mit vollständig erfundenen Nachrichten ergänzen.
 
 Die vorhandenen Fachmodule sollen nachvollziehbar übernommen werden. Eine unabhängige Neuentwicklung des gesamten Systems ist nicht vorgesehen.
+
+## Quellenabstraktion
+
+Der gemeinsame Workflow soll konkrete Website-Namen nicht kennen. Die bestehende Adapter-Schnittstelle ist übernommen; die Trennung der weiteren produktiven Sonderfälle ist geplant. Details und Grenzen stehen unter [Neutrale Quellenanbindung](source-adapters.md).

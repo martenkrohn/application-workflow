@@ -11,7 +11,7 @@ Das bestehende System verbindet Quellenadapter, nachvollziehbare Stelleninformat
 ## Bereits enthalten
 
 - Unverändert übernommene Datenmodelle für Quelleneinträge, Belege und Verarbeitungsergebnisse.
-- Eine vorhandene Fake-Quelle, die eine erfundene Stellenanzeige erzeugt.
+- Die bestehende `SourceAdapter`-Schnittstelle und eine vorhandene Fake-Quelle, die eine erfundene Stellenanzeige erzeugt.
 - Ein ausführbares Beispiel ohne Netzwerkzugriff, Anmeldung oder API-Schlüssel.
 - Dokumentation zur Architektur und zur weiteren Übernahme.
 
@@ -30,6 +30,7 @@ Das Beispiel gibt einen erfundenen Stelleneintrag als JSON aus. Die Domain `exam
 | Pfad | Inhalt |
 | --- | --- |
 | `src/job_system/domain/` | Übernommene Datenmodelle |
+| `src/job_system/application/ports.py` | Bestehende Schnittstellen für Quellen und Infrastruktur |
 | `src/job_system/adapters/sources/fake.py` | Vorhandene synthetische Quelle |
 | `examples/` | Ausführbare Beispiele |
 | `docs/architecture.md` | Architektur und Stand der Übernahme |
@@ -40,5 +41,7 @@ Der interne Paketname `job_system` bleibt erhalten, damit weitere geprüfte Orig
 ## Aktueller Umfang
 
 Echte Bewerbungen, Lebensläufe, persönliche Profile, E-Mails, Datenbanken, Zugangsdaten und Browserzustände werden nicht mitgeführt. Produktive Integrationen sind kein Bestandteil dieses ersten Übernahmeschritts.
+
+Quellen werden über Adapter angebunden; pro Website können eigene Extraktionsregeln erforderlich sein. Die geplante [neutrale Quellenanbindung](docs/source-adapters.md) beschreibt die Trennung zwischen gemeinsamem Workflow und privaten Website-Adaptern.
 
 Weitere Schritte: [Übernahmeplan](docs/migration-plan.md). Ein GitHub-Repository und eine öffentliche Veröffentlichung sind noch nicht eingerichtet. Eine Lizenz für die spätere Veröffentlichung wurde noch nicht festgelegt.
