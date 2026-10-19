@@ -1,51 +1,50 @@
-# Recruiter walkthrough
+# Technical walkthrough
 
-From the repository root, with Python 3.13:
+The [hosted demo](https://marten-application-workflow-demo.saltychair1.chatgpt.site) is the quickest way to inspect the result. This guide is optional.
+
+## Explore the fictional dashboard locally
+
+Use Python 3.13 from the repository root:
 
 ```sh
 python run_demo.py demo
 python run_demo.py dashboard serve
 ```
 
-Open http://127.0.0.1:8765/. This is the original project's dashboard with six fictional vacancies. Three detailed assessments and three quick-review priorities are simulated. The collection, evidence, preparation, validation and persistence services really run.
+Open `http://127.0.0.1:8765/`. Search for a role, inspect Details, change Minimum fit to see weaker matches and save a vacancy to the shortlist. These are fictional examples; no model is invoked. Repeating the demo preserves human decisions and imported results.
 
-1. Start in **Detailed review**. Open **Details** for Research Data Analyst. Read its strengths, gaps, missing information and extracted facts. Set **Minimum fit** to `0` to compare the unsuitable senior engineering role. **Source** opens the fictional source text locally.
-2. Open **Quick review**. The two higher-priority roles pass to detailed review; the lower-priority coordinator demonstrates that a human can override a recommendation. Click **Queue detailed review** on that role.
-3. Open **Assessment queue**, enter total `2` and click **Preview selection**. The manual choice stays included alongside a suggested role. Change checkboxes and **Apply selection changes**, or leave the selection intact. **Prepare batches** writes bounded tasks without calling an agent.
-4. Inspect the resulting local batch folder under `var/ai/input/` (or `var/workspaces/NAME/ai/input/`). `HANDOFF.md` gives exact input, output and validation commands. Prepared tasks survive restarting the dashboard. The queue lists pending batch IDs.
-5. Return to **Detailed review**, click **Start application**, and choose a slug such as `example-research-analyst`. Open the generated folder under `var/applications/01_active/`. It contains the assessment, an application brief, a cover-letter draft and fictional materials guidance. Nothing is submitted.
+## Run compact screening on a separate dataset
 
-The three views, table layout, filtering, sorting, column resizing, dark mode and dialogs come from the original working project. The portfolio replaces private profile data, source adapters and document scaffolding. It does not require a mailbox or model account.
-
-## Try a real agent handoff in a separate dataset
+Install Codex CLI, sign in and ensure `codex` is on PATH. Availability of the pinned models depends on the user's account. This command uses the model account and may consume plan usage:
 
 ```sh
-python run_demo.py --workspace review collect
+python run_demo.py --workspace review run
+```
+
+It collects bundled fictional HTML, runs GPT-6 Luna with Low reasoning on compact packets, validates and imports the output, and prepares detailed batches for promoted vacancies. It reuses pending screening work after interruption. Failed or invalid output stays local for inspection.
+
+Open a prepared manifest's adjacent `HANDOFF.md` in Codex, choose GPT-6.1 Sol and start the task. The handoff instructs the agent to read assigned full evidence, write JSONL, validate and import. Then inspect the stored results:
+
+```sh
 python run_demo.py --workspace review dashboard serve
 ```
 
-All three vacancies in this dataset begin unassessed. Manually queue one in **Quick review**, preview total `1` in **Assessment queue**, then prepare it. Open the generated `HANDOFF.md` with your chosen agent. After the agent writes the assigned JSONL output:
+Low-level `assessment prepare --ids source:id`, `assessment validate BATCH_ID`, `assessment finish BATCH_ID` and `assessment instructions BATCH_ID` remain available for inspection and recovery. They do not start a model. Keep live adapters and authenticated sessions private; see [source adapters](source-adapters.md).
+
+## Export the static preview
 
 ```sh
-python run_demo.py --workspace review assessment validate BATCH_ID
-python run_demo.py --workspace review assessment finish BATCH_ID
+python run_demo.py export-dashboard --output demo
+python -m http.server 8765 --directory demo
 ```
 
-Replace `BATCH_ID` with the displayed ID, then **Refresh data**. Invalid outputs are rejected before import. Preparing a batch never starts an agent; importing never decides to apply.
+The exporter builds fresh fictional data in an isolated temporary directory. It never exports an existing runtime database. The preview supports filtering, sorting, details, dark mode and a browser-local shortlist without a backend.
 
-## Synthetic mail demonstration
-
-Mail classification is a separate CLI example, outside the original dashboard's three views:
+## Tests
 
 ```sh
-python run_demo.py --workspace mail-review mail prepare
+python -m pip install -e ".[dev]"
+python -m pytest
 ```
 
-Give the returned manifest and `prompts/mail-review.md` to an agent. After its output:
-
-```sh
-python run_demo.py --workspace mail-review mail finish
-python run_demo.py --workspace mail-review status
-```
-
-Only classification proposals are stored. No account is contacted and no application status is changed automatically.
+Tests exercise evidence integrity, immutable inputs, validation, human decisions, screening orchestration and the dashboard boundary. A controlled test double replaces the model subprocess; no paid model calls or real source requests are needed.

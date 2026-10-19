@@ -1,90 +1,37 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="dashboard-token" content="__CSRF_TOKEN__">
-  <title>Job application dashboard</title>
-  <link rel="stylesheet" href="/styles.css">
+  <meta name="description" content="Explore the output of an automated vacancy collection and two-stage AI assessment workflow. Fictional demonstration data.">
+  <title>Application Workflow — Dashboard demo</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="masthead">
-    <div>
-      <p class="eyebrow">LOCAL VACANCY WORKSPACE</p>
-      <h1>Job application dashboard</h1>
-      <p class="subtitle">Review assessments, filter the shortlist, and start applications. Fictional data; simulated assessments.</p>
-    </div>
-    <div class="header-actions">
-      <button id="theme" class="secondary" type="button">Dark mode</button>
-      <button id="refresh" class="secondary" type="button">Refresh data</button>
-    </div>
+    <div><p class="eyebrow">APPLICATION WORKFLOW · DASHBOARD DEMO</p><h1>From vacancy evidence to a focused shortlist</h1><p class="subtitle">Explore the dashboard used to review structured AI assessments. All jobs and assessments shown here are fictional examples.</p><p><a href="https://github.com/martenkrohn/application-workflow" target="_blank" rel="noopener">Read the project story ↗</a></p></div>
+    <div class="header-actions"><button id="theme" class="secondary" type="button">Dark mode</button><button id="refresh" class="secondary" type="button">Reset demo shortlist</button></div>
   </header>
-
   <main>
-    <nav class="queue-tabs" aria-label="Review views">
-      <button type="button" data-view="quick" class="secondary">Quick review</button>
-      <button type="button" data-view="queue" class="secondary">Assessment queue</button>
-      <button type="button" data-view="detailed">Detailed review</button>
-    </nav>
+    <section class="demo-guide"><b>Try the result:</b> filter by role or location, open an assessment's details, then save a vacancy to your shortlist. The real workflow collects evidence, screens compact records with Luna Low, and prepares detailed batches that I start in Codex.</section>
     <section id="metrics" class="metrics" aria-label="Vacancy counts"></section>
-
     <section class="controls" aria-label="Filters">
       <label class="search">Search<input id="search" type="search" placeholder="Title, employer, gap, location…"></label>
-      <label>View<select id="view"><option value="detailed">Detailed review</option><option value="quick">Quick review</option><option value="queue">Assessment queue</option></select></label>
-      <label>First scraped<select id="scrapeDay"><option value="">All scrape days</option></select></label>
-      <label>Minimum fit<input id="minFit" type="number" step="any" value="65"></label>
-      <fieldset id="locationBuckets" class="location-buckets">
-        <legend>Location priorities</legend>
-        <div id="locationBucketOptions" class="bucket-options"></div>
-        <p class="subtle">Show any selected bucket. All enabled by default.</p>
-      </fieldset>
+      <label>Collected<select id="scrapeDay"><option value="">All collection dates</option></select></label>
+      <label>Minimum fit<input id="minFit" type="number" min="0" max="100" value="65"></label>
+      <fieldset id="locationBuckets" class="location-buckets"><legend>Location priorities</legend><div id="locationBucketOptions" class="bucket-options"></div></fieldset>
       <label class="check"><input id="hideExpired" type="checkbox" checked>Hide expired</label>
+      <label class="check"><input id="onlySaved" type="checkbox">Your shortlist only</label>
     </section>
-
     <section class="results">
-      <div class="results-head"><h2 id="tableTitle">Detailed review</h2><div class="results-tools"><span id="resultCount"></span><button id="resetColumns" class="small secondary" type="button">Reset column widths</button></div></div>
-      <p class="subtle">All scrape dates are available. Highest scores appear first. Quick priority ranks title/location plausibility; detailed fit reflects the full assessment.</p>
-      <div id="quickQueue" class="actions" hidden>
-        <button id="openQueue" type="button">Review assessment queue</button>
-        <span class="subtle">Queue individual vacancies here, then review suggestions and prepare batches in the Assessment queue.</span>
-      </div>
-      <div id="assessmentQueue" hidden>
-        <p>Choose and review vacancies here. Preparation uses saved complete descriptions and saves batches locally. Start the assessment yourself in an agent workspace.</p>
-        <div id="queuePool" class="subtle"></div>
-        <div class="actions queue-controls">
-          <label>Total for this run<input id="queueCount" type="number" min="0" step="1" value="20"></label>
-          <button id="previewQueue" type="button">Preview selection</button>
-          <button id="saveQueue" type="button" disabled>Apply selection changes</button>
-          <button id="discardQueue" class="secondary" type="button" disabled>Discard changes</button>
-          <button id="fillQueue" class="secondary" type="button">Fill remaining places</button>
-          <button id="prepareQueue" type="button">Prepare batches</button>
-        </div>
-        <p id="queueSummary" role="status"></p>
-        <p class="subtle">Checkbox changes are provisional. Apply selection changes to save them together before filling places or preparing batches. Unchecking leaves a place empty until you fill it. Suggestions follow location group, quick priority, then recency. Filters above apply to review tables, not this queue.</p>
-        <div id="unavailableManual"></div>
-        <div id="preparedBatches"></div>
-      </div>
-      <div id="notice" role="status"></div>
-      <div class="table-wrap">
-        <table>
-          <thead id="tableHead"></thead>
-          <tbody id="tableBody"></tbody>
-        </table>
-      </div>
+      <div class="results-head"><h2>Assessed vacancies</h2><div class="results-tools"><span id="resultCount" role="status"></span><button id="resetColumns" class="small secondary" type="button">Reset column widths</button></div></div>
+      <p class="subtle">Scores support review; they are not probabilities. Lower Minimum fit to 0 to inspect the weaker matches. Column headings sort the results.</p>
+      <div id="notice" role="status" hidden></div>
+      <div class="table-wrap"><table><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table></div>
     </section>
+    <footer class="demo-footer">Fictional data · Illustrative assessments · Shortlist choices stay in this browser in the hosted demo.</footer>
   </main>
-
   <dialog id="details"><button class="dialog-close" aria-label="Close">×</button><div id="detailContent"></div></dialog>
-  <dialog id="workspaceDialog">
-    <form id="workspaceForm">
-      <button type="button" class="dialog-close" aria-label="Close">×</button>
-      <h2>Start application workspace</h2>
-      <input id="workspaceGroup" type="hidden">
-      <label>Employer and short job name<input id="workspaceSlug" required pattern="[a-z0-9][a-z0-9-]{1,79}" placeholder="example-research-analyst"></label>
-      <p class="hint">Use a short <code>employer-job</code> name. The permanent numerical ID is added automatically.</p>
-      <button type="submit">Create workspace</button>
-    </form>
-  </dialog>
-  <script src="/app.js" defer></script>
+  <script src="demo-data.js"></script><script src="app.js" defer></script>
 </body>
 </html>

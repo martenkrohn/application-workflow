@@ -57,14 +57,11 @@ class Database:
                 "(version TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
             )
             applied = {
-                str(row[0])
-                for row in connection.execute("SELECT version FROM schema_migrations")
+                str(row[0]) for row in connection.execute("SELECT version FROM schema_migrations")
             }
             count = 0
             migration_root = files("job_system.infrastructure.migrations")
-            for migration in sorted(
-                migration_root.iterdir(), key=lambda item: item.name
-            ):
+            for migration in sorted(migration_root.iterdir(), key=lambda item: item.name):
                 if not migration.name.endswith(".sql") or migration.name in applied:
                     continue
                 connection.executescript(migration.read_text(encoding="utf-8"))
@@ -135,9 +132,7 @@ class RunRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.connection = connection
 
-    def create(
-        self, run_id: str, version: str, fingerprint: str, started_at: str
-    ) -> None:
+    def create(self, run_id: str, version: str, fingerprint: str, started_at: str) -> None:
         self.connection.execute(
             "INSERT INTO collection_runs "
             "(id, command_version, configuration_fingerprint, started_at, status) "
@@ -145,9 +140,7 @@ class RunRepository:
             (run_id, version, fingerprint, started_at, RunStatus.RUNNING),
         )
 
-    def finish(
-        self, run_id: str, status: RunStatus, finished_at: str, summary_path: str
-    ) -> None:
+    def finish(self, run_id: str, status: RunStatus, finished_at: str, summary_path: str) -> None:
         self.connection.execute(
             "UPDATE collection_runs SET status=?, finished_at=?, summary_path=? WHERE id=?",
             (status, finished_at, summary_path, run_id),
@@ -162,9 +155,7 @@ class RunRepository:
             (attempt_id, run_id, source_name, started_at, AttemptStatus.RUNNING),
         )
 
-    def finish_attempt(
-        self, attempt_id: str, finished_at: str, outcome: SourceOutcome
-    ) -> None:
+    def finish_attempt(self, attempt_id: str, finished_at: str, outcome: SourceOutcome) -> None:
         self.connection.execute(
             "UPDATE source_attempts SET finished_at=?, status=?, observations_created=?, "
             "observations_unchanged=?, artifacts_created=?, artifacts_unchanged=?, "
@@ -194,9 +185,7 @@ class EvidenceRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.connection = connection
 
-    def record_artifact(
-        self, artifact: StoredArtifact, media_type: str, created_at: str
-    ) -> None:
+    def record_artifact(self, artifact: StoredArtifact, media_type: str, created_at: str) -> None:
         self.connection.execute(
             "INSERT OR IGNORE INTO raw_artifacts "
             "(content_hash, relative_path, size, media_type, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -267,9 +256,7 @@ class EvidenceRepository:
         )
         return True, observation_id
 
-    def link_observation_artifact(
-        self, observation_id: str, artifact_hash: str, role: str
-    ) -> None:
+    def link_observation_artifact(self, observation_id: str, artifact_hash: str, role: str) -> None:
         self.connection.execute(
             "INSERT OR IGNORE INTO observation_artifacts "
             "(observation_id, artifact_hash, role) VALUES (?, ?, ?)",
@@ -396,9 +383,7 @@ class NormalizationRepository:
         )
 
     def set_item_status(self, item_id: str, status: str) -> None:
-        self.connection.execute(
-            "UPDATE ai_work_items SET status=? WHERE id=?", (status, item_id)
-        )
+        self.connection.execute("UPDATE ai_work_items SET status=? WHERE id=?", (status, item_id))
 
     def cancel_assessment_batch(
         self,
@@ -550,10 +535,7 @@ class NormalizationRepository:
             "JOIN source_observations queued ON queued.id=wi.observation_id "
             "WHERE queued.source_name=ranked.source_name "
             "AND queued.external_id=ranked.external_id AND wb.prompt_id='vacancy-screening' "
-            "AND wi.status IN ('prepared','validated') "
-            "AND NOT EXISTS (SELECT 1 FROM problem_batches pb WHERE pb.batch_id=wb.id)) "
-            "AND NOT EXISTS (SELECT 1 FROM problem_items pi WHERE pi.state='open' "
-            "AND (pi.observation_id=ranked.id OR pi.version_id=cv.id)) "
+            "AND wi.status IN ('prepared','validated')) "
             "AND NOT EXISTS (SELECT 1 FROM ai_work_items wi "
             "JOIN ai_work_batches wb ON wb.id=wi.batch_id "
             "JOIN source_observations queued ON queued.id=wi.observation_id "
@@ -847,9 +829,7 @@ class SourceHealthRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.connection = connection
 
-    def record(
-        self, source_name: str, attempted_at: str, outcome: SourceOutcome
-    ) -> None:
+    def record(self, source_name: str, attempted_at: str, outcome: SourceOutcome) -> None:
         succeeded = outcome.status == AttemptStatus.SUCCEEDED
         item_count = outcome.observations_created + outcome.observations_unchanged
         self.connection.execute(
@@ -924,10 +904,7 @@ class ReviewRepository:
         self.connection.executemany(
             "INSERT OR IGNORE INTO vacancy_group_members"
             "(group_id, source_name, external_id, added_at) VALUES (?, ?, ?, ?)",
-            (
-                (group_id, source, external_id, timestamp)
-                for source, external_id in members
-            ),
+            ((group_id, source, external_id, timestamp) for source, external_id in members),
         )
         self.connection.execute(
             "UPDATE vacancy_groups SET updated_at=? WHERE id=?", (timestamp, group_id)
@@ -959,13 +936,9 @@ class ReviewRepository:
         for decision in decisions:
             by_profile.setdefault(str(decision["profile_id"]), []).append(decision)
         for profile_decisions in by_profile.values():
-            choices = {
-                (str(item["status"]), item["note"]) for item in profile_decisions
-            }
+            choices = {(str(item["status"]), item["note"]) for item in profile_decisions}
             if len(choices) > 1:
-                raise RuntimeError(
-                    "cannot merge vacancy groups with conflicting review decisions"
-                )
+                raise RuntimeError("cannot merge vacancy groups with conflicting review decisions")
         self.connection.execute(
             "INSERT OR IGNORE INTO vacancy_review_decisions"
             "(group_id, profile_id, status, note, decided_at, updated_at) "
@@ -1041,198 +1014,7 @@ class ReviewRepository:
         ).fetchall()
         return tuple(dict(row) for row in rows)
 
-    def workspace(self, group_id: str, profile_id: str) -> dict[str, Any] | None:
-        row = self.connection.execute(
-            "SELECT application_id, contact_email, submission_route, sender_email, is_mock, "
-            "relative_path, slug, created_at "
-            "FROM application_workspaces "
-            "WHERE group_id=? AND profile_id=?",
-            (group_id, profile_id),
-        ).fetchone()
-        return dict(row) if row is not None else None
-
-    def record_workspace(
-        self,
-        group_id: str,
-        profile_id: str,
-        relative_path: str,
-        slug: str,
-        application_id: str,
-        contact_email: str | None,
-        submission_route: str,
-        sender_email: str | None,
-        created_at: str,
-    ) -> None:
-        self.connection.execute(
-            "INSERT INTO application_workspaces"
-            "(group_id, profile_id, relative_path, slug, application_id, "
-            "contact_email, submission_route, sender_email, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                group_id,
-                profile_id,
-                relative_path,
-                slug,
-                application_id,
-                contact_email,
-                submission_route,
-                sender_email,
-                created_at,
-            ),
-        )
-
-    def workspace_by_application_id(self, application_id: str) -> dict[str, Any] | None:
-        row = self.connection.execute(
-            "SELECT group_id, profile_id, relative_path, slug, application_id, contact_email, "
-            "submission_route, sender_email, is_mock, created_at FROM application_workspaces "
-            "WHERE application_id=?",
-            (application_id,),
-        ).fetchone()
-        return dict(row) if row is not None else None
-
-    def workspace_by_contact_email(self, contact_email: str) -> dict[str, Any] | None:
-        row = self.connection.execute(
-            "SELECT group_id, profile_id, relative_path, slug, application_id, contact_email, "
-            "submission_route, sender_email, is_mock, created_at FROM application_workspaces "
-            "WHERE lower(contact_email)=lower(?)",
-            (contact_email.strip(),),
-        ).fetchone()
-        return dict(row) if row is not None else None
-
-    def set_workspace_contact_email(
-        self, application_id: str, contact_email: str
-    ) -> None:
-        self.connection.execute(
-            "UPDATE application_workspaces SET contact_email=? WHERE application_id=?",
-            (contact_email, application_id),
-        )
-
-    def set_workspace_submission(
-        self,
-        application_id: str,
-        submission_route: str,
-        sender_email: str | None,
-    ) -> None:
-        self.connection.execute(
-            "UPDATE application_workspaces SET submission_route=?, sender_email=? "
-            "WHERE application_id=?",
-            (submission_route, sender_email, application_id),
-        )
-
-    def record_status_event(
-        self,
-        application_id: str,
-        group_id: str,
-        profile_id: str,
-        previous_status: str,
-        new_status: str,
-        source: str,
-        reason: str | None,
-        timestamp: str,
-        gmail_message_id: str | None = None,
-    ) -> None:
-        self.connection.execute(
-            "INSERT INTO application_status_events "
-            "(application_id, group_id, profile_id, previous_status, new_status, source, "
-            "gmail_message_id, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                application_id,
-                group_id,
-                profile_id,
-                previous_status,
-                new_status,
-                source,
-                gmail_message_id,
-                reason,
-                timestamp,
-            ),
-        )
-
-    def status_events(self, application_id: str) -> tuple[dict[str, Any], ...]:
-        rows = self.connection.execute(
-            "SELECT * FROM application_status_events WHERE application_id=? "
-            "ORDER BY created_at, id",
-            (application_id,),
-        ).fetchall()
-        return tuple(dict(row) for row in rows)
-
-    def register_mock_workspace(self, profile_id: str, timestamp: str) -> bool:
-        existing = self.workspace_by_application_id("00")
-        if existing is not None:
-            if not existing["is_mock"]:
-                raise RuntimeError(
-                    "application ID 00 is already used by a non-mock workspace"
-                )
-            return False
-        group_id = "vgrp_mock_email_workflow"
-        self.connection.execute(
-            "INSERT OR IGNORE INTO vacancy_groups(id, created_at, updated_at) VALUES (?, ?, ?)",
-            (group_id, timestamp, timestamp),
-        )
-        self.connection.execute(
-            "INSERT INTO vacancy_review_decisions "
-            "(group_id, profile_id, status, note, decided_at, updated_at) "
-            "VALUES (?, ?, 'applied', ?, ?, ?)",
-            (group_id, profile_id, "Reserved mock application", timestamp, timestamp),
-        )
-        self.connection.execute(
-            "INSERT INTO application_workspaces "
-            "(group_id, profile_id, relative_path, slug, application_id, contact_email, "
-            "submission_route, sender_email, created_at, is_mock) "
-            "VALUES (?, ?, ?, 'mock', '00', ?, 'unknown', NULL, ?, 1)",
-            (
-                group_id,
-                profile_id,
-                "applications/02_applied/00_mock",
-                "applicant+mock@example.invalid",
-                timestamp,
-            ),
-        )
-        self.record_status_event(
-            "00",
-            group_id,
-            profile_id,
-            "new",
-            "applied",
-            "manual",
-            "Reserved mock application setup",
-            timestamp,
-        )
-        return True
-
-    def update_workspace_path(
-        self,
-        group_id: str,
-        profile_id: str,
-        relative_path: str,
-        slug: str | None = None,
-    ) -> None:
-        if slug is None:
-            self.connection.execute(
-                "UPDATE application_workspaces SET relative_path=? "
-                "WHERE group_id=? AND profile_id=?",
-                (relative_path, group_id, profile_id),
-            )
-        else:
-            self.connection.execute(
-                "UPDATE application_workspaces SET relative_path=?, slug=? "
-                "WHERE group_id=? AND profile_id=?",
-                (relative_path, slug, group_id, profile_id),
-            )
-
-    def workspaces(self, profile_id: str | None) -> tuple[dict[str, Any], ...]:
-        rows = self.connection.execute(
-            "SELECT group_id, relative_path, slug, application_id, contact_email, "
-            "submission_route, sender_email, is_mock, created_at "
-            "FROM application_workspaces "
-            "WHERE (? IS NULL OR profile_id=?) AND is_mock=0 ORDER BY created_at DESC",
-            (profile_id, profile_id),
-        ).fetchall()
-        return tuple(dict(row) for row in rows)
-
-    def group_records(
-        self, group_id: str, profile_id: str
-    ) -> tuple[dict[str, Any], ...]:
+    def group_records(self, group_id: str, profile_id: str) -> tuple[dict[str, Any], ...]:
         rows = self.connection.execute(
             "SELECT vg.id AS group_id, COALESCE(vrd.status, 'new') AS review_status, "
             "vrd.note AS review_note, vgm.source_name, vgm.external_id, "
@@ -1256,289 +1038,6 @@ class ReviewRepository:
         return tuple(dict(row) for row in rows)
 
 
-class EmailRepository:
-    """Persist immutable Gmail messages and the incremental scan cursor."""
-
-    def __init__(self, connection: sqlite3.Connection) -> None:
-        self.connection = connection
-
-    def known_message_ids(self, message_ids: tuple[str, ...]) -> frozenset[str]:
-        if not message_ids:
-            return frozenset()
-        placeholders = ",".join("?" for _ in message_ids)
-        rows = self.connection.execute(
-            f"SELECT gmail_message_id FROM application_emails "
-            f"WHERE gmail_message_id IN ({placeholders})",
-            message_ids,
-        ).fetchall()
-        return frozenset(str(row[0]) for row in rows)
-
-    def aliases(self) -> tuple[dict[str, Any], ...]:
-        rows = self.connection.execute(
-            "SELECT application_id, contact_email, relative_path, is_mock "
-            "FROM application_workspaces "
-            "WHERE contact_email IS NOT NULL ORDER BY application_id"
-        ).fetchall()
-        return tuple(dict(row) for row in rows)
-
-    def add_message(self, message: dict[str, Any]) -> None:
-        self.connection.execute(
-            "INSERT INTO application_emails "
-            "(gmail_message_id, gmail_thread_id, application_id, sender, recipients, subject, "
-            "received_at, raw_artifact_path, raw_artifact_hash, ingested_at, routing_status, "
-            "routing_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                message["gmail_message_id"],
-                message["gmail_thread_id"],
-                message["application_id"],
-                message["sender"],
-                message["recipients"],
-                message["subject"],
-                message["received_at"],
-                message["raw_artifact_path"],
-                message["raw_artifact_hash"],
-                message["ingested_at"],
-                message["routing_status"],
-                message["routing_reason"],
-            ),
-        )
-
-    def sync_state(self, account_address: str) -> dict[str, Any] | None:
-        row = self.connection.execute(
-            "SELECT * FROM email_sync_state WHERE account_address=?", (account_address,)
-        ).fetchone()
-        return dict(row) if row is not None else None
-
-    def save_sync_state(
-        self,
-        account_address: str,
-        scanned_at: str,
-        result: str,
-        history_id: str | None = None,
-    ) -> None:
-        self.connection.execute(
-            "INSERT INTO email_sync_state "
-            "(account_address, last_successful_scan_at, gmail_history_id, last_scan_result, "
-            "last_error, updated_at) VALUES (?, ?, ?, ?, NULL, ?) "
-            "ON CONFLICT(account_address) DO UPDATE SET "
-            "last_successful_scan_at=excluded.last_successful_scan_at, "
-            "gmail_history_id=excluded.gmail_history_id, "
-            "last_scan_result=excluded.last_scan_result, last_error=NULL, "
-            "updated_at=excluded.updated_at",
-            (account_address, scanned_at, history_id, result, scanned_at),
-        )
-
-    def list_messages(self, limit: int = 100) -> tuple[dict[str, Any], ...]:
-        rows = self.connection.execute(
-            "SELECT ae.*, CASE WHEN EXISTS (SELECT 1 FROM email_assessments ea "
-            "WHERE ea.gmail_message_id=ae.gmail_message_id) THEN 1 ELSE 0 END AS assessed "
-            "FROM application_emails ae ORDER BY ae.ingested_at DESC, ae.gmail_message_id LIMIT ?",
-            (limit,),
-        ).fetchall()
-        return tuple(dict(row) for row in rows)
-
-    def assessment_candidates(
-        self, prompt_id: str, prompt_version: int, limit: int
-    ) -> tuple[dict[str, Any], ...]:
-        rows = self.connection.execute(
-            "SELECT ae.* FROM application_emails ae "
-            "WHERE ae.routing_status IN ('routed', 'unmatched') "
-            "AND NOT EXISTS (SELECT 1 FROM email_assessments ea "
-            "WHERE ea.gmail_message_id=ae.gmail_message_id AND ea.prompt_id=? "
-            "AND ea.prompt_version=?) "
-            "AND NOT EXISTS (SELECT 1 FROM email_assessment_items eai "
-            "JOIN email_assessment_batches eab ON eab.id=eai.batch_id "
-            "WHERE eai.gmail_message_id=ae.gmail_message_id "
-            "AND eab.prompt_id=? AND eab.prompt_version=? "
-            "AND eai.status IN ('prepared', 'validated') "
-            "AND NOT EXISTS (SELECT 1 FROM problem_batches pb WHERE pb.batch_id=eab.id)) "
-            "AND NOT EXISTS (SELECT 1 FROM problem_items pi WHERE pi.state='open' "
-            "AND pi.gmail_message_id=ae.gmail_message_id) "
-            "ORDER BY ae.received_at, ae.gmail_message_id LIMIT ?",
-            (prompt_id, prompt_version, prompt_id, prompt_version, limit),
-        ).fetchall()
-        return tuple(dict(row) for row in rows)
-
-    def route_from_thread(self, message_id: str, thread_id: str) -> str | None:
-        rows = self.connection.execute(
-            "SELECT DISTINCT COALESCE(ae.application_id, ea.deterministic_application_id, "
-            "ea.suggested_application_id) AS application_id FROM application_emails ae "
-            "LEFT JOIN email_assessments ea ON ea.gmail_message_id=ae.gmail_message_id "
-            "AND ea.confidence>=90 AND ea.suspicious_content=0 "
-            "AND ea.classification NOT IN ('unrelated', 'ambiguous') "
-            "WHERE ae.gmail_thread_id=? AND ae.gmail_message_id<>? "
-            "AND ae.routing_status NOT IN ('multiple', 'failed')",
-            (thread_id, message_id),
-        ).fetchall()
-        ids = {
-            str(row["application_id"])
-            for row in rows
-            if row["application_id"] is not None
-        }
-        if len(ids) != 1:
-            return None
-        application_id = ids.pop()
-        cursor = self.connection.execute(
-            "UPDATE application_emails SET application_id=?,routing_status='routed',"
-            "routing_reason=? "
-            "WHERE gmail_message_id=? AND routing_status='unmatched' AND application_id IS NULL",
-            (
-                application_id,
-                "Unambiguous application match from saved Gmail thread",
-                message_id,
-            ),
-        )
-        return application_id if cursor.rowcount == 1 else None
-
-    def application_contexts(self) -> tuple[dict[str, Any], ...]:
-        rows = self.connection.execute(
-            "SELECT aw.application_id, aw.contact_email, aw.submission_route, aw.is_mock, "
-            "aw.relative_path, COALESCE(vrd.status, 'new') AS current_status, "
-            "CASE WHEN aw.is_mock=1 THEN 'Mock email lifecycle test' "
-            "ELSE MIN(cj.title) END AS title, "
-            "CASE WHEN aw.is_mock=1 THEN 'Mock Employer' "
-            "ELSE MIN(cj.employer) END AS employer, "
-            "(SELECT MIN(ase.created_at) FROM application_status_events ase "
-            "WHERE ase.application_id=aw.application_id AND ase.new_status='applied') "
-            "AS submitted_at "
-            "FROM application_workspaces aw "
-            "LEFT JOIN vacancy_review_decisions vrd ON vrd.group_id=aw.group_id "
-            "AND vrd.profile_id=aw.profile_id "
-            "LEFT JOIN vacancy_group_members vgm ON vgm.group_id=aw.group_id "
-            "LEFT JOIN canonical_jobs cj ON cj.source_name=vgm.source_name "
-            "AND cj.external_id=vgm.external_id "
-            "GROUP BY aw.application_id ORDER BY aw.application_id"
-        ).fetchall()
-        return tuple(dict(row) for row in rows)
-
-    def dashboard_messages(self) -> tuple[dict[str, Any], ...]:
-        rows = self.connection.execute(
-            "SELECT ae.gmail_message_id, ae.gmail_thread_id, ae.application_id, ae.sender, "
-            "ae.recipients, ae.subject, ae.received_at, ae.routing_status, ae.routing_reason, "
-            "ea.suggested_application_id, ea.classification, ea.confidence, ea.reason, "
-            "ea.evidence_json, ea.suspicious_content, ea.assessed_at, ea.applied_transition_at, "
-            "COALESCE(ea.deterministic_application_id, ea.suggested_application_id, "
-            "ae.application_id) AS assessed_application_id "
-            "FROM application_emails ae LEFT JOIN email_assessments ea "
-            "ON ea.gmail_message_id=ae.gmail_message_id AND ea.prompt_id='email-assessment' "
-            "AND ea.prompt_version=(SELECT MAX(latest.prompt_version) "
-            "FROM email_assessments latest WHERE latest.gmail_message_id=ae.gmail_message_id "
-            "AND latest.prompt_id='email-assessment') "
-            "ORDER BY ae.received_at DESC, ae.gmail_message_id"
-        ).fetchall()
-        return tuple(dict(row) for row in rows)
-
-    def create_assessment_batch(
-        self,
-        batch: dict[str, Any],
-        items: tuple[dict[str, str], ...],
-    ) -> None:
-        self.connection.execute(
-            "INSERT INTO email_assessment_batches "
-            "(id, prompt_id, prompt_version, manifest_hash, created_at, status, "
-            "input_directory, output_path, item_count) "
-            "VALUES (?, ?, ?, ?, ?, 'prepared', ?, ?, ?)",
-            (
-                batch["id"],
-                batch["prompt_id"],
-                batch["prompt_version"],
-                batch["manifest_hash"],
-                batch["created_at"],
-                batch["input_directory"],
-                batch["output_path"],
-                len(items),
-            ),
-        )
-        self.connection.executemany(
-            "INSERT INTO email_assessment_items "
-            "(id, batch_id, gmail_message_id, input_hash, status) "
-            "VALUES (?, ?, ?, ?, 'prepared')",
-            (
-                (item["id"], batch["id"], item["gmail_message_id"], item["input_hash"])
-                for item in items
-            ),
-        )
-
-    def assessment_batch(self, batch_id: str) -> dict[str, Any] | None:
-        row = self.connection.execute(
-            "SELECT * FROM email_assessment_batches WHERE id=?", (batch_id,)
-        ).fetchone()
-        return dict(row) if row is not None else None
-
-    def assessment_batch_items(self, batch_id: str) -> tuple[dict[str, Any], ...]:
-        rows = self.connection.execute(
-            "SELECT * FROM email_assessment_items WHERE batch_id=? ORDER BY id",
-            (batch_id,),
-        ).fetchall()
-        return tuple(dict(row) for row in rows)
-
-    def set_assessment_item_status(self, item_id: str, status: str) -> None:
-        self.connection.execute(
-            "UPDATE email_assessment_items SET status=? WHERE id=?", (status, item_id)
-        )
-
-    def set_assessment_status(self, batch_id: str, status: str) -> None:
-        self.connection.execute(
-            "UPDATE email_assessment_batches SET status=? WHERE id=?",
-            (status, batch_id),
-        )
-
-    def save_assessment(self, assessment: dict[str, Any]) -> bool:
-        cursor = self.connection.execute(
-            "INSERT OR IGNORE INTO email_assessments "
-            "(gmail_message_id, prompt_id, prompt_version, input_hash, "
-            "deterministic_application_id, suggested_application_id, classification, "
-            "confidence, reason, evidence_json, proposed_status, suspicious_content, model_id, "
-            "result_json, assessed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (
-                assessment["gmail_message_id"],
-                assessment["prompt_id"],
-                assessment["prompt_version"],
-                assessment["input_hash"],
-                assessment["deterministic_application_id"],
-                assessment["suggested_application_id"],
-                assessment["classification"],
-                assessment["confidence"],
-                assessment["reason"],
-                assessment["evidence_json"],
-                assessment["proposed_status"],
-                assessment["suspicious_content"],
-                assessment["model_id"],
-                assessment["result_json"],
-                assessment["assessed_at"],
-            ),
-        )
-        return cursor.rowcount == 1
-
-    def assessment(
-        self, gmail_message_id: str, prompt_id: str, prompt_version: int
-    ) -> dict[str, Any] | None:
-        row = self.connection.execute(
-            "SELECT * FROM email_assessments WHERE gmail_message_id=? "
-            "AND prompt_id=? AND prompt_version=?",
-            (gmail_message_id, prompt_id, prompt_version),
-        ).fetchone()
-        return dict(row) if row is not None else None
-
-    def mark_transition_applied(
-        self,
-        gmail_message_id: str,
-        prompt_id: str,
-        prompt_version: int,
-        timestamp: str,
-    ) -> None:
-        cursor = self.connection.execute(
-            "UPDATE email_assessments SET applied_transition_at=? "
-            "WHERE gmail_message_id=? AND prompt_id=? AND prompt_version=? "
-            "AND applied_transition_at IS NULL",
-            (timestamp, gmail_message_id, prompt_id, prompt_version),
-        )
-        if cursor.rowcount != 1:
-            raise RuntimeError(
-                f"email transition was already applied: {gmail_message_id}"
-            )
-
-
 class UnitOfWork(AbstractContextManager["UnitOfWork"]):
     def __init__(self, database: Database, *, read_only: bool = False) -> None:
         self.database = database
@@ -1549,13 +1048,10 @@ class UnitOfWork(AbstractContextManager["UnitOfWork"]):
         self.source_health: SourceHealthRepository
         self.normalization: NormalizationRepository
         self.reviews: ReviewRepository
-        self.emails: EmailRepository
 
     def __enter__(self) -> Self:
         self.connection = (
-            self.database.connect(read_only=True)
-            if self.read_only
-            else self.database.connect()
+            self.database.connect(read_only=True) if self.read_only else self.database.connect()
         )
         try:
             self.connection.execute("BEGIN" if self.read_only else "BEGIN IMMEDIATE")
@@ -1567,7 +1063,6 @@ class UnitOfWork(AbstractContextManager["UnitOfWork"]):
         self.source_health = SourceHealthRepository(self.connection)
         self.normalization = NormalizationRepository(self.connection)
         self.reviews = ReviewRepository(self.connection)
-        self.emails = EmailRepository(self.connection)
         return self
 
     def __exit__(

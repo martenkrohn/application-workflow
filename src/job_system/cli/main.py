@@ -11,33 +11,35 @@ from job_system.application.portfolio import PortfolioWorkflow
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Application Workflow — local human/agent review"
+        description="Application Workflow — automated screening and focused Codex review"
     )
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--workspace", help="separate local dataset; e.g. review")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser(
-        "demo", help="run fictional data and explicitly simulated agent results"
+    commands.add_parser("demo", help="run fictional data and explicitly simulated agent results")
+    run = commands.add_parser(
+        "run", help="collect, run Luna Low screening and prepare detailed Codex batches"
     )
+    run.add_argument(
+        "--adapter", help="trusted private source factory; default: fictional local HTML"
+    )
+    export = commands.add_parser("export-dashboard", help="export a fixture-only static dashboard")
+    export.add_argument("--output", type=Path, default=Path("demo"))
     collect = commands.add_parser(
         "collect", help="collect local example HTML or use a trusted private adapter"
     )
     collect.add_argument(
         "--adapter", help="trusted importable module:factory; executes local Python"
     )
-    commands.add_parser("status", help="show jobs, batches and mail reviews as JSON")
-    assessment = commands.add_parser("assessment").add_subparsers(
-        dest="action", required=True
-    )
+    commands.add_parser("status", help="show stored vacancies and assessment batches as JSON")
+    assessment = commands.add_parser("assessment").add_subparsers(dest="action", required=True)
     prepare = assessment.add_parser(
         "prepare", help="prepare only explicitly chosen source:job-id entries"
     )
     prepare.add_argument("--ids", nargs="+", required=True)
     for action in ["validate", "finish", "instructions"]:
         assessment.add_parser(action).add_argument("batch_id")
-    agent = commands.add_parser("agent").add_subparsers(
-        dest="agent_action", required=True
-    )
+    agent = commands.add_parser("agent").add_subparsers(dest="agent_action", required=True)
     example = agent.add_parser(
         "example-results",
         help="SIMULATE results for a prepared batch; no model invocation",
@@ -49,9 +51,6 @@ def main(argv: list[str] | None = None) -> int:
     decision.add_argument("source")
     decision.add_argument("external_id")
     decision.add_argument("status")
-    mail = commands.add_parser("mail").add_subparsers(dest="mail_action", required=True)
-    mail.add_parser("prepare")
-    mail.add_parser("finish")
     dashboard = commands.add_parser("dashboard").add_subparsers(
         dest="dashboard_action", required=True
     )
@@ -59,9 +58,16 @@ def main(argv: list[str] | None = None) -> int:
     serve.add_argument("--port", type=int, default=8765)
     args = parser.parse_args(argv)
     try:
+        if args.command == "export-dashboard":
+            from job_system.application.export_dashboard import export_dashboard
+
+            print(json.dumps(export_dashboard(args.root, args.output)))
+            return 0
         workflow = PortfolioWorkflow(args.root, args.workspace)
         if args.command == "demo":
             result = workflow.demo()
+        elif args.command == "run":
+            result = workflow.run(args.adapter)
         elif args.command == "collect":
             result = workflow.collect(args.adapter)
         elif args.command == "status":
@@ -93,14 +99,6 @@ def main(argv: list[str] | None = None) -> int:
                     .read_text(encoding="utf-8")
                 )
                 return 0
-        elif args.command == "mail":
-            from job_system.application.mail_demo import finish_mail, prepare_mail
-
-            result = (
-                prepare_mail(workflow.root, workflow.settings.data_dir)
-                if args.mail_action == "prepare"
-                else finish_mail(workflow)
-            )
         else:
             from job_system.web.server import serve_dashboard
 

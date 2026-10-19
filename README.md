@@ -1,118 +1,77 @@
 # Application Workflow
 
-**A human-in-the-loop job application workflow built with Python, SQLite and structured AI-agent handoffs.**
+**Turning a repetitive job search into a structured workflow with Python, SQLite and staged AI assessment.**
 
-The application preserves vacancy evidence and prepares bounded assessment tasks. A person chooses the work; an agent returns structured judgements; Python validates the results before import. The person reviews recommendations and decides what to do next.
+I kept repeating the same work: collect vacancies from different sources, check whether they fit, read the promising ones in depth, and keep track of my conclusions. I built this project to automate those recurring steps and bring the results into one review dashboard.
 
-This is a runnable portfolio edition of a private working project. It uses self-authored fictional vacancies, an invented profile and fictional mail. Production website adapters, accounts and operational history are excluded.
+**[Open the interactive dashboard demo ↗](https://marten-application-workflow-demo.saltychair1.chatgpt.site)**
 
-## Try it in two minutes
+The demo uses fictional vacancies and illustrative assessments. Search for a role, open its assessment details and save it to your shortlist. It preserves the working dashboard's visual style, filters, sortable columns, detail dialog and dark mode.
 
-Requires **Python 3.13**. No runtime dependencies, credentials or model account are needed. From the repository root:
+## From scattered vacancies to a focused shortlist
+
+```mermaid
+flowchart LR
+    A[Human signs in] --> B[Collect and normalize]
+    B --> C[(SQLite + saved evidence)]
+    C --> D[Quick assessment: Luna Low]
+    D --> E[Prepare detailed batches]
+    E --> F[Human starts Codex: GPT-6.1 Sol]
+    F --> G[Validate and import]
+    G --> H[Review the dashboard]
+```
+
+In my private working setup, I first complete any required sign-in or verification for the configured vacancy sources. The script then collects the available information, normalizes it, stores it, runs the compact first-pass assessment and prepares the promising vacancies for detailed review. Source access problems pause the affected collection work for human attention.
+
+I start the prepared detailed-assessment task in Codex. The agent works through the assigned evidence, returns structured results and validates and imports them. I then use the dashboard to inspect the reasoning and decide which opportunities deserve my attention.
+
+## Design decisions
+
+| Decision | Why I made it |
+| --- | --- |
+| **Automate collection and normalization** | Repeating the same collection and cleanup steps manually adds work every day. A shared pipeline produces comparable vacancy records. |
+| **Use SQLite as the system of record** | Sources, observations, clean versions and assessments stay linked. I can trace an assessment back to the evidence and profile used for it. |
+| **Screen compact inputs first** | A first pass should identify plausible matches without spending detailed-review effort on every vacancy. Missing information remains uncertainty rather than an invented rejection reason. |
+| **Match the model to the task** | The portfolio's quick-screening runner uses **GPT-6 Luna with Low reasoning**. Detailed review is human-started in **Codex with GPT-6.1 Sol** and receives fuller evidence. |
+| **Prepare structured batches** | Each task has an explicit set of vacancies, a shared profile, fixed inputs and a defined output format. This controls context, supports consistent processing and keeps unfinished work inspectable. |
+| **Validate before storing judgements** | Identity, input integrity, profile version, score consistency and evidence references are checked before results enter the dashboard. |
+| **Keep the final decision human** | The dashboard presents fit, strengths, gaps and missing information together. Scores prioritize review; they are not probabilities or application decisions. |
+
+The staged design is intended to reduce repeated work and concentrate model effort where it matters. I have not measured a percentage cost saving or a screening-accuracy improvement, so this repository makes no numerical performance claim.
+
+## What the dashboard shows
+
+- A sortable overview of assessed vacancies, fit and confidence.
+- Search and filters for location, collection date and minimum fit.
+- Detailed reasoning, strengths, gaps, missing information and assessment criteria.
+- A personal shortlist, kept in the visitor's browser in the hosted demo.
+
+The presentation ends at vacancy review. The hosted demo is a static preview generated from fresh fictional fixtures; it does not connect to my accounts, database or live vacancy sources.
+
+## Implementation you can inspect
+
+| Part | Code |
+| --- | --- |
+| Collection and evidence storage | [Collection service](src/job_system/application/collection.py), [artifact store](src/job_system/infrastructure/artifacts.py) |
+| SQL persistence | [Repositories and transactions](src/job_system/infrastructure/database.py), [schema migrations](src/job_system/infrastructure/migrations/) |
+| Clean vacancy records | [Normalization](src/job_system/application/cleaning.py), [data contracts](src/job_system/domain/clean_vacancies.py) |
+| Two-stage assessment | [Assessment services](src/job_system/application/assessment.py), [Luna Low runner](src/job_system/infrastructure/screening_runner.py), [batch orchestration](src/job_system/application/portfolio.py) |
+| Agent instructions | [Compact screening](prompts/vacancy-screening/v4/prompt.md), [detailed assessment](prompts/vacancy-assessment/v3/prompt.md) |
+| Final review interface | [Dashboard service](src/job_system/application/dashboard.py), [frontend](src/job_system/web/static/) |
+
+This is a focused portfolio edition of a privately used system. The collection/storage core, normalization, assessment validation and dashboard come from that project. Source-specific integrations and operational data are kept private; the included source adapter reads self-authored example HTML. The compact Codex runner and static export make the chosen workflow explicit in this edition.
+
+Developed with substantial AI-assisted coding. My work focused on identifying the repeated tasks, defining the workflow and assessment criteria, choosing where to automate, and reviewing and refining the resulting implementation.
+
+## Optional local exploration
+
+Python 3.13; no runtime packages are needed for the fictional demo:
 
 ```sh
 python run_demo.py demo
 python run_demo.py dashboard serve
 ```
 
-Open **http://127.0.0.1:8765/**. Stop the server with Ctrl+C. On some systems the Python command is `python3` or `py`.
+Open `http://127.0.0.1:8765/`. The demo never invokes a model. For real screening, prepared Codex tasks, tests and static export, see the [technical walkthrough](docs/walkthrough.md). See also [architecture](docs/architecture.md) and [validation](docs/validation.md).
 
-The demo loads six fictional vacancies into the **dashboard used in the original working project**. Three have detailed assessments; three remain in quick review. Assessments and quick-review priorities are **explicitly simulated**. Collection, evidence storage, batch preparation, validation and import use the real services. No model is invoked, and re-running preserves human decisions.
-
-**A short recruiter walkthrough:**
-
-1. **Detailed review:** open **Details** on the Research Data Analyst role. Inspect the recommendation, strengths, gaps and extracted vacancy facts. Set Minimum fit to `0` to also see the deliberately unsuitable senior role.
-2. **Quick review → Assessment queue:** queue a vacancy, set a small total, then **Preview selection**. Review manual choices and suggestions before **Prepare batches**. Preparation creates an inspectable agent task; it does not call a model.
-3. **Detailed review → Start application:** create a local application folder containing the assessment, fictional materials guidance and a draft for human/agent collaboration. Nothing is submitted.
-
-The original table layout, filters, sortable/resizable columns, dark mode, details dialog and queue selection flow are retained. Personal information, live source integrations and private document templates are replaced at their boundaries. **Source** opens the bundled fictional vacancy text locally. See the [complete walkthrough](docs/walkthrough.md).
-
-**To try the actual human/agent handoff in a separate dataset:**
-
-```sh
-python run_demo.py --workspace review collect
-python run_demo.py --workspace review dashboard serve
-```
-
-In **Quick review**, click **Queue detailed review**. In **Assessment queue**, set the total to `1`, click **Preview selection**, then **Prepare batches**. Open the generated `HANDOFF.md` with your agent, let it write the assigned output, then validate and explicitly import it. Preparing never starts an agent. See the [review guide](docs/review-guide.md) for the complete sequence.
-
-## What the project demonstrates
-
-- **Evidence before inference:** raw artifact hashes, immutable clean versions and citations.
-- **Human control:** explicit selection and work limits, separate recommendations and decisions.
-- **Agentic work with a contract:** versioned prompts, bounded input packages and structured JSONL output; no agent product is required by the core.
-- **Validation and persistence:** input identity, profile version, score bands and evidence references are checked before results are stored.
-- **Recovery:** collection failures are recorded per source; prepared work survives interruption; invalid results can be repaired and revalidated.
-- **Local review:** the original quick-review, assessment-queue and detailed-review dashboard, with local application workspaces. Fictional mail handoffs are available separately through the CLI.
-
-A valid schema is not proof of a correct judgement. Scores are review aids, not calibrated probabilities.
-
-## A complete review cycle
-
-```mermaid
-flowchart LR
-    A[Collect and normalize] --> B[Human selects]
-    B --> C[Prepare bounded task]
-    C --> D[Agent assesses]
-    D --> E[Validate output]
-    E -->|Repair if needed| D
-    E --> F[Human imports and reviews]
-    F --> G[Human application decision]
-```
-
-## Source integration
-
-The bundled `LocalHTMLSource` parses a documented, fictional HTML format. It performs no network requests. Other sources can be added through `SourceAdapter` and a private adapter factory:
-
-```sh
-python run_demo.py collect --adapter my_private_adapter:create_source
-```
-
-A factory is trusted Python code and must be installed/importable locally. It maps its specific website or feed to the [neutral source contract](docs/source-adapters.md). Changing a domain alone does not make a scraper work on arbitrary websites. No universal scraper, live mailbox connector or automatic browser login is bundled.
-
-## How this relates to the original project
-
-The collection service, content-addressed artifact store, SQLite repositories and migrations, clean-data service, profile snapshots and assessment validation were transferred from the private working project. Provider-specific parsing and source priorities were removed; the normalizer now accepts neutral field names. The dashboard assets, dashboard service, assessment queue and vacancy grouping also come from the working project. The small CLI, local HTML adapter and synthetic mail handoff were added for this review edition. Application workspaces retain the existing decision and folder lifecycle but use fictional Markdown materials instead of private CVs and document templates.
-
-The original project also has scheduled collection, live quick screening, browser and mailbox integrations. The demo seeds quick-review priorities without running an agent; detailed review tasks can be handed to a chosen agent. This edition demonstrates the central collection → prepared assessment → validation → human review cycle without claiming full feature parity. See [architecture and provenance](docs/architecture.md).
-
-This is a personal project developed with substantial AI-agent assistance. The technical presentation focuses on the workflow design, its working implementation and verifiable behaviour; it does not imply every line was written manually.
-
-## Installation and tests
-
-Direct checkout usage above needs no installation. For the optional `jobs` command:
-
-```sh
-python -m pip install -e .
-jobs demo
-jobs dashboard serve
-```
-
-For tests:
-
-```sh
-python -m pip install -e ".[dev]"
-python -m pytest
-```
-
-Tests cover the transferred collection/storage core and the portfolio boundaries: exact task selection, tampered inputs, duplicate or misbound outputs, invalid citations, score consistency, import behaviour, mail evidence and the loopback API.
-
-## Repository map
-
-| Path | Purpose |
-| --- | --- |
-| `src/job_system/application/` | Collection, cleaning, prepared assessments and review orchestration |
-| `src/job_system/domain/` | Evidence, clean vacancy facts and quality rules |
-| `src/job_system/infrastructure/` | SQLite, migrations, artifact storage, locking and configuration |
-| `src/job_system/adapters/sources/` | Neutral local HTML parser and existing fake source |
-| `src/job_system/web/` | Loopback-only dashboard |
-| `examples/` | Self-authored HTML, invented profile and fictional messages |
-| `prompts/` | Agent-neutral handoff instructions and assessment schema |
-| `tests/` | Original core tests and additional boundary tests |
-| `docs/` | Review, architecture and source integration guides |
-
-Runtime databases, outputs, logs and local preparation notes stay under ignored `var/` and `local/`. No original private history is carried over.
-
-## Review status and scope
-
-Prepared for **private GitHub review**. The repository has no live deployment and no automatic production synchronization. It does not send mail or submit applications. No open-source licence has been selected; private upload does not grant a redistribution licence. The [validation record](docs/validation.md) states what was actually checked.
+No open-source license has been selected. Private source access and data are not distributed with this portfolio.

@@ -1,0 +1,100 @@
+{
+  "type": "object",
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "prompt_id": {
+            "type": "string"
+          },
+          "suspicious_content": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "profile_id": {
+            "type": "string"
+          },
+          "profile_version": {
+            "type": "integer"
+          },
+          "suitability_score": {
+            "type": "integer"
+          },
+          "observation_id": {
+            "type": "string"
+          },
+          "profile_hash": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "batch_id": {
+            "type": "string"
+          },
+          "assessment_confidence": {
+            "type": "integer"
+          },
+          "work_item_id": {
+            "type": "string"
+          },
+          "input_hash": {
+            "type": "string"
+          },
+          "model_id": {
+            "type": "string"
+          },
+          "prompt_version": {
+            "type": "integer"
+          },
+          "decision": {
+            "type": "string"
+          },
+          "clean_version_id": {
+            "type": "string"
+          },
+          "exclusion_basis": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "title",
+              "location",
+              null
+            ]
+          }
+        },
+        "required": [
+          "assessment_confidence",
+          "batch_id",
+          "clean_version_id",
+          "decision",
+          "exclusion_basis",
+          "input_hash",
+          "model_id",
+          "observation_id",
+          "profile_hash",
+          "profile_id",
+          "profile_version",
+          "prompt_id",
+          "prompt_version",
+          "status",
+          "suitability_score",
+          "summary",
+          "suspicious_content",
+          "work_item_id"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "results"
+  ],
+  "additionalProperties": false
+}

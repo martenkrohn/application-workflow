@@ -41,9 +41,7 @@ SCREENING_WAVE_SIZE = 50
 SCREENING_PROMOTION_SCORE = 75
 VACANCY_BATCH_ATTEMPTS = 3
 DEFAULT_PROFILE = Path("examples/profiles/demo/profile-v1.md")
-FIELD_STATUSES = frozenset(
-    {"stated", "inferred", "unknown", "not_stated", "not_applicable"}
-)
+FIELD_STATUSES = frozenset({"stated", "inferred", "unknown", "not_stated", "not_applicable"})
 VACANCY_FIELDS = (
     "title",
     "employer",
@@ -122,9 +120,7 @@ class ValidationResult:
 
 
 def _json_bytes(value: object) -> bytes:
-    return (
-        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    ).encode()
+    return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
 
 
 def _damaged_output_text(value: object) -> bool:
@@ -144,9 +140,7 @@ def _sha256(content: bytes) -> str:
 
 def _write_atomic(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f"{path.name}-", dir=path.parent
-    )
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f"{path.name}-", dir=path.parent)
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "wb") as handle:
@@ -215,19 +209,13 @@ class ProfileDocument:
     content: str
 
     @classmethod
-    def load(
-        cls, project_root: Path, relative_path: Path = DEFAULT_PROFILE
-    ) -> ProfileDocument:
+    def load(cls, project_root: Path, relative_path: Path = DEFAULT_PROFILE) -> ProfileDocument:
         path = (project_root / relative_path).resolve()
         if not path.is_relative_to(project_root.resolve()) or not path.is_file():
-            raise AssessmentError(
-                f"screening profile not found inside project: {relative_path}"
-            )
+            raise AssessmentError(f"screening profile not found inside project: {relative_path}")
         match = re.fullmatch("profile-v([1-9][0-9]*)", path.stem)
         if match is None or path.parent == project_root.resolve():
-            raise AssessmentError(
-                "profile path must end in <name>/profile-v<number>.md"
-            )
+            raise AssessmentError("profile path must end in <name>/profile-v<number>.md")
         content_bytes = path.read_bytes()
         name = path.parent.name.lower()
         version = int(match.group(1))
@@ -289,13 +277,10 @@ class ScreeningService:
         self.location_policy = LocationPolicy.load(self.project_root)
         recovery_path = self.data_dir / "datasets/location-policy-recovery.json"
         recovery = (
-            json.loads(recovery_path.read_text(encoding="utf-8"))
-            if recovery_path.exists()
-            else []
+            json.loads(recovery_path.read_text(encoding="utf-8")) if recovery_path.exists() else []
         )
         self._location_recovery = {
-            (entry["source"], entry["external_id"], entry["clean_version_id"])
-            for entry in recovery
+            (entry["source"], entry["external_id"], entry["clean_version_id"]) for entry in recovery
         }
 
     def prepare(
@@ -310,31 +295,23 @@ class ScreeningService:
             raise AssessmentError(
                 f"screening batch limit must be between 1 and {SCREENING_WAVE_SIZE}"
             )
-        prompt_version = (
-            (6 if self.location_policy.enabled else 4) if self.clean_input else 2
-        )
+        prompt_version = (6 if self.location_policy.enabled else 4) if self.clean_input else 2
         profile = AssessmentService(
             self.project_root, self.data_dir, self.database, self.clock, self.ids
         ).ensure_profile(profile_path)
         with self.database.unit_of_work() as work:
-            available = work.normalization.screening_candidates(
-                source_names, 2147483647
-            )
+            available = work.normalization.screening_candidates(source_names, 2147483647)
             handled = work.normalization.handled_candidate_observations()
         ordered, selection = self._select_candidates(available, handled)
         candidates = ordered[:limit]
         if not candidates:
-            raise NoAssessmentCandidates(
-                "no new or changed observations need quick screening"
-            )
+            raise NoAssessmentCandidates("no new or changed observations need quick screening")
         selected_bands = {
             f"L{location}R{role}": 0 for location in range(1, 4) for role in range(1, 4)
         }
         for candidate in candidates:
             selected_decision = self.prefilter.evaluate(self._packet(candidate))
-            selected_bands[
-                f"L{selected_decision.location_band}R{selected_decision.role_band}"
-            ] += 1
+            selected_bands[f"L{selected_decision.location_band}R{selected_decision.role_band}"] += 1
         cycle_id = cycle_id or self.ids.new("screening")
         batch_id = self.ids.new("aiw")
         relative_directory = Path("ai") / "batches" / batch_id
@@ -357,18 +334,11 @@ class ScreeningService:
             shared_profile = {"path": "profile.json", "hash": _sha256(snapshot)}
         for candidate in candidates:
             artifact_path = (self.data_dir / str(candidate["relative_path"])).resolve()
-            if (
-                not artifact_path.is_relative_to(self.data_dir)
-                or not artifact_path.is_file()
-            ):
-                raise AssessmentError(
-                    f"invalid evidence artifact for {candidate['id']}"
-                )
+            if not artifact_path.is_relative_to(self.data_dir) or not artifact_path.is_file():
+                raise AssessmentError(f"invalid evidence artifact for {candidate['id']}")
             content = artifact_path.read_bytes()
             if _sha256(content) != candidate["artifact_hash"]:
-                raise AssessmentError(
-                    f"invalid evidence artifact for {candidate['id']}"
-                )
+                raise AssessmentError(f"invalid evidence artifact for {candidate['id']}")
             work_item_id = self.ids.new("aiwitem")
             item = {
                 "batch_id": batch_id,
@@ -443,12 +413,9 @@ class ScreeningService:
                         "group": self.location_policy.label(
                             self.location_policy.classify(self._packet(candidate))
                         )
-                        if self.location_policy.classify(self._packet(candidate)).group
-                        is not None
+                        if self.location_policy.classify(self._packet(candidate)).group is not None
                         else None,
-                        "reason": self.location_policy.classify(
-                            self._packet(candidate)
-                        ).reason,
+                        "reason": self.location_policy.classify(self._packet(candidate)).reason,
                     }
                     for item, candidate in zip(manifest_items, candidates, strict=True)
                 },
@@ -495,15 +462,11 @@ class ScreeningService:
             self.project_root, self.data_dir, self.database, self.clock, self.ids
         ).ensure_profile(profile_path)
         with self.database.unit_of_work() as work:
-            available = work.normalization.screening_candidates(
-                source_names, 2147483647
-            )
+            available = work.normalization.screening_candidates(source_names, 2147483647)
             handled = work.normalization.handled_candidate_observations()
         ordered, summary = self._select_candidates(available, handled)
         if preview_limit is not None:
-            summary["selected_preview"] = self._queue_statistics(
-                ordered[: max(0, preview_limit)]
-            )
+            summary["selected_preview"] = self._queue_statistics(ordered[: max(0, preview_limit)])
         return summary | {"profile_id": profile.profile_id}
 
     def location_preview(
@@ -516,9 +479,7 @@ class ScreeningService:
         ProfileDocument.load(self.project_root, profile_path)
         with self.database.unit_of_work() as work:
             rows = work.evidence.review(2147483647, source_names)
-            candidates = work.normalization.screening_candidates(
-                source_names, 2147483647
-            )
+            candidates = work.normalization.screening_candidates(source_names, 2147483647)
             handled = work.normalization.handled_candidate_observations()
         counts = dict.fromkeys(
             (*self.location_policy.labels, "Outside scope", "Needs clarification"), 0
@@ -603,8 +564,7 @@ class ScreeningService:
                     (
                         f"negative:{value}",
                         "hard_exclude"
-                        if decision.exclusion_reason
-                        == "professional_conditional_mismatch"
+                        if decision.exclusion_reason == "professional_conditional_mismatch"
                         and value in self.prefilter.policy.conditional_negative_phrases
                         else "R3",
                     )
@@ -651,17 +611,13 @@ class ScreeningService:
         valid: list[dict[str, Any]] = []
         errors: list[dict[str, Any]] = []
         seen: set[str] = set()
-        for line_number, line in enumerate(
-            output.read_text(encoding="utf-8").splitlines(), 1
-        ):
+        for line_number, line in enumerate(output.read_text(encoding="utf-8").splitlines(), 1):
             if not line.strip():
                 continue
             try:
                 record = json.loads(line)
             except json.JSONDecodeError as error:
-                errors.append(
-                    {"line": line_number, "errors": [f"invalid JSON: {error}"]}
-                )
+                errors.append({"line": line_number, "errors": [f"invalid JSON: {error}"]})
                 continue
             record_errors = self._validate_record(
                 record, batch, expected, manifest_items, manifest, seen
@@ -693,22 +649,16 @@ class ScreeningService:
             )
         )
         invalid_ids = {error.get("work_item_id") for error in errors}
-        valid = [
-            record for record in valid if record["work_item_id"] not in invalid_ids
-        ]
+        valid = [record for record in valid if record["work_item_id"] not in invalid_ids]
         with self.database.unit_of_work() as work:
             for record in valid:
                 if expected[str(record["work_item_id"])]["status"] != "imported":
-                    work.normalization.set_item_status(
-                        str(record["work_item_id"]), "validated"
-                    )
+                    work.normalization.set_item_status(str(record["work_item_id"]), "validated")
             if batch["status"] != "imported":
                 work.normalization.set_batch_status(
                     batch_id, "validated" if not errors else "partial"
                 )
-        return ValidationResult(
-            batch_id, len(valid), len(errors), tuple(errors), tuple(valid)
-        )
+        return ValidationResult(batch_id, len(valid), len(errors), tuple(errors), tuple(valid))
 
     def cancel_batch(self, batch_id: str, reason: str) -> dict[str, Any]:
         normalized_reason = reason.strip()
@@ -722,20 +672,15 @@ class ScreeningService:
                 SCREENING_PROMPT_ID,
             )
 
-    def import_batch(
-        self, batch_id: str, *, allow_partial: bool = False
-    ) -> dict[str, Any]:
+    def import_batch(self, batch_id: str, *, allow_partial: bool = False) -> dict[str, Any]:
         validation = self.validate(batch_id)
         if validation.rejected_count and (not allow_partial):
-            raise AssessmentError(
-                "cannot import a screening batch with invalid records"
-            )
+            raise AssessmentError("cannot import a screening batch with invalid records")
         batch, items, manifest = self._load_batch(batch_id)
         expected = {item["id"]: item for item in items}
         directory = self._data_path(str(batch["input_directory"]))
         paths = {
-            str(item["work_item_id"]): directory / str(item["path"])
-            for item in manifest["items"]
+            str(item["work_item_id"]): directory / str(item["path"]) for item in manifest["items"]
         }
         timestamp = utc_text(self.clock.now())
         imported = 0
@@ -745,9 +690,7 @@ class ScreeningService:
                 if expected[str(record["work_item_id"])]["status"] == "imported":
                     unchanged += 1
                     continue
-                item = json.loads(
-                    paths[str(record["work_item_id"])].read_text(encoding="utf-8")
-                )
+                item = json.loads(paths[str(record["work_item_id"])].read_text(encoding="utf-8"))
                 screening = {
                     "id": self.ids.new("screen"),
                     "observation_id": record["observation_id"],
@@ -761,9 +704,7 @@ class ScreeningService:
                     "assessment_confidence": record["assessment_confidence"],
                     "decision": record["decision"],
                     "summary": record["summary"],
-                    "result_json": json.dumps(
-                        record, ensure_ascii=False, sort_keys=True
-                    ),
+                    "result_json": json.dumps(record, ensure_ascii=False, sort_keys=True),
                     "prompt_id": record["prompt_id"],
                     "prompt_version": record["prompt_version"],
                     "model_id": record["model_id"],
@@ -773,17 +714,11 @@ class ScreeningService:
                 changed = work.normalization.upsert_screening(screening)
                 imported += int(changed)
                 unchanged += int(not changed)
-                work.normalization.set_item_status(
-                    str(record["work_item_id"]), "imported"
-                )
+                work.normalization.set_item_status(str(record["work_item_id"]), "imported")
             work.normalization.set_batch_status(
                 batch_id, "partial" if validation.rejected_count else "imported"
             )
             assert work.connection is not None
-            work.connection.execute(
-                "UPDATE problem_items SET state='resolved' WHERE batch_id=? AND state='open' AND work_item_id IN (SELECT id FROM ai_work_items WHERE batch_id=? AND status='imported')",
-                (batch_id, batch_id),
-            )
         return {
             "batch_id": batch_id,
             "profile_id": manifest["profile_id"],
@@ -808,9 +743,7 @@ class ScreeningService:
             return ["result must be a JSON object"]
         errors: list[str] = []
         required = SCREENING_RECORD_KEYS | (
-            {"clean_version_id", "exclusion_basis"}
-            if batch["prompt_version"] >= 3
-            else set()
+            {"clean_version_id", "exclusion_basis"} if batch["prompt_version"] >= 3 else set()
         )
         if batch["prompt_version"] >= 6:
             required |= {"location_assessment"}
@@ -819,9 +752,7 @@ class ScreeningService:
                 f"result fields do not exactly match vacancy-screening schema v{batch['prompt_version']}"
             )
         if _contains_mojibake(record) or _damaged_output_text(record):
-            errors.append(
-                "result text appears to contain incorrectly decoded UTF-8 (mojibake)"
-            )
+            errors.append("result text appears to contain incorrectly decoded UTF-8 (mojibake)")
         item_id = record.get("work_item_id")
         if not isinstance(item_id, str) or item_id not in expected:
             return ["unknown work_item_id"]
@@ -840,17 +771,12 @@ class ScreeningService:
         for key, value in checks.items():
             if record.get(key) != value:
                 errors.append(f"{key} does not match the prepared batch")
-        item_path = (
-            self._data_path(str(batch["input_directory"]))
-            / manifest_items[item_id]["path"]
-        )
+        item_path = self._data_path(str(batch["input_directory"])) / manifest_items[item_id]["path"]
         if _sha256(item_path.read_bytes()) != expected[item_id]["input_hash"]:
             return [*errors, "prepared input changed after batch creation"]
         for name in ("suitability_score", "assessment_confidence"):
             value = record.get(name)
-            minimum = (
-                1 if name == "suitability_score" and batch["prompt_version"] >= 4 else 0
-            )
+            minimum = 1 if name == "suitability_score" and batch["prompt_version"] >= 4 else 0
             if (
                 not isinstance(value, int)
                 or isinstance(value, bool)
@@ -865,17 +791,13 @@ class ScreeningService:
             and isinstance(score, int)
             and (score >= SCREENING_PROMOTION_SCORE)
         ):
-            errors.append(
-                f"deprioritize requires a score below {SCREENING_PROMOTION_SCORE}"
-            )
+            errors.append(f"deprioritize requires a score below {SCREENING_PROMOTION_SCORE}")
         if (
             record.get("decision") == "promote"
             and isinstance(score, int)
             and (score < SCREENING_PROMOTION_SCORE)
         ):
-            errors.append(
-                f"promote requires a score of at least {SCREENING_PROMOTION_SCORE}"
-            )
+            errors.append(f"promote requires a score of at least {SCREENING_PROMOTION_SCORE}")
         if record.get("status") != "completed":
             errors.append("status must be completed")
         if not isinstance(record.get("model_id"), str) or not record["model_id"]:
@@ -887,15 +809,10 @@ class ScreeningService:
         if batch["prompt_version"] >= 3:
             item = json.loads(item_path.read_bytes())
             if record.get("clean_version_id") != item["screening_packet"]["version_id"]:
-                errors.append(
-                    "clean version does not match the prepared screening item"
-                )
+                errors.append("clean version does not match the prepared screening item")
             doc = self.cleaner.get(item["screening_packet"]["version_id"])
             needs_review = (
-                manifest["quick_location_policy"]["admitted_work_items"][item_id][
-                    "group"
-                ]
-                is None
+                manifest["quick_location_policy"]["admitted_work_items"][item_id]["group"] is None
                 if batch["prompt_version"] >= 6
                 else None
             )
@@ -909,15 +826,11 @@ class ScreeningService:
                 errors.append("promoted record must have null exclusion_basis")
             if record.get("decision") == "deprioritize":
                 if basis not in {"title", "location"}:
-                    errors.append(
-                        "deprioritization requires a title or location mismatch"
-                    )
+                    errors.append("deprioritization requires a title or location mismatch")
                 elif not item["screening_packet"].get(
                     "title" if basis == "title" else "locations"
                 ) and (basis != "location" or batch["prompt_version"] < 6):
-                    errors.append(
-                        "missing title/location cannot justify deprioritization"
-                    )
+                    errors.append("missing title/location cannot justify deprioritization")
                 elif (
                     basis == "location"
                     and batch["prompt_version"] < 6
@@ -927,9 +840,7 @@ class ScreeningService:
                         "location rejection requires explicit on-site attendance evidence"
                     )
             if batch["prompt_version"] >= 6:
-                errors.extend(
-                    self._validate_location_assessment(record, item, manifest)
-                )
+                errors.extend(self._validate_location_assessment(record, item, manifest))
         return errors
 
     def _validate_location_assessment(
@@ -970,9 +881,7 @@ class ScreeningService:
             errors.append("duplicate location evidence citations")
         if status in {"matched", "outside_scope"} and (not citations):
             errors.append("resolved location assessment requires saved evidence")
-        admission = manifest["quick_location_policy"]["admitted_work_items"][
-            item["work_item_id"]
-        ]
+        admission = manifest["quick_location_policy"]["admitted_work_items"][item["work_item_id"]]
         if admission["group"] is not None and (
             status != "matched" or review["group"] != admission["group"]
         ):
@@ -981,13 +890,9 @@ class ScreeningService:
             errors.append("uncertain or accepted location cannot justify rejection")
         if status == "outside_scope":
             cited = " ".join((evidence[value] for value in citations))
-            has_onsite, conflicting = self._location_attendance_evidence(
-                cited, evidence
-            )
+            has_onsite, conflicting = self._location_attendance_evidence(cited, evidence)
             if not has_onsite or conflicting or packet["location_evidence_incomplete"]:
-                errors.append(
-                    "location rejection requires complete cited workplace evidence"
-                )
+                errors.append("location rejection requires complete cited workplace evidence")
             if record.get("decision") != "deprioritize":
                 errors.append("outside-scope location must be explicitly deprioritized")
         if status == "unresolved" and record.get("exclusion_basis") == "location":
@@ -995,9 +900,7 @@ class ScreeningService:
         return errors
 
     @staticmethod
-    def _location_attendance_evidence(
-        cited: str, evidence: dict[str, str]
-    ) -> tuple[bool, bool]:
+    def _location_attendance_evidence(cited: str, evidence: dict[str, str]) -> tuple[bool, bool]:
         fixed_days = "\\b(?:[1-6]|one|two|three|four|five|six|ein(?:en|e)?|zwei|drei|vier|fünf|sechs)\\s+(?:tage?|days?)\\s+(?:pro\\s+woche\\s+|per\\s+week\\s+)?(?:vor ort|on[- ]site|in (?:the )?office|office|im büro)\\b"
         required_presence = "\\bon[- ]site\\s+presence\\s+(?:is\\s+)?required\\b|\\b(?:mandatory|required)\\s+on[- ]site\\s+(?:presence|attendance)\\b"
         attendance = f"(?:{fixed_days}|{required_presence})"
@@ -1005,9 +908,7 @@ class ScreeningService:
         required = bool(re.search(attendance, cited, re.I)) and (
             not re.search(optional, cited, re.I)
         )
-        onsite = bool(
-            re.search("vor ort|on[- ]site|in person|präsenzpflicht", cited, re.I)
-        )
+        onsite = bool(re.search("vor ort|on[- ]site|in person|präsenzpflicht", cited, re.I))
         all_text = " ".join(evidence.values())
         if re.search(optional, all_text, re.I):
             return (False, True)
@@ -1019,19 +920,13 @@ class ScreeningService:
         if required:
             labels = {"locations"}
             policy = evidence.get("remote_policy", "")
-            if policy == evidence.get("locations") or re.fullmatch(
-                "hybrid", policy.strip(), re.I
-            ):
+            if policy == evidence.get("locations") or re.fullmatch("hybrid", policy.strip(), re.I):
                 labels.add("remote_policy")
             conflicting = bool(full_remote) or any(
                 (
                     re.search("remote|homeoffice|hybrid|mobil", value, re.I)
                     and key not in labels
-                    and (
-                        not re.fullmatch(
-                            "\\s*Working Pattern:\\s*Hybrid\\s*", value, re.I
-                        )
-                    )
+                    and (not re.fullmatch("\\s*Working Pattern:\\s*Hybrid\\s*", value, re.I))
                     and (not re.search(attendance, value, re.I))
                     for key, value in evidence.items()
                 )
@@ -1052,9 +947,7 @@ class ScreeningService:
         if prompt_version < 6:
             return packet
         if needs_review is None:
-            needs_review = (
-                self.location_policy.classify(location_packet(document)).group is None
-            )
+            needs_review = self.location_policy.classify(location_packet(document)).group is None
         evidence = [
             {
                 "id": field,
@@ -1074,14 +967,9 @@ class ScreeningService:
                     re.I,
                 )
             ]
-            incomplete = len(relevant) > 8 or any(
-                (len(block["text"]) > 1200 for block in relevant)
-            )
+            incomplete = len(relevant) > 8 or any((len(block["text"]) > 1200 for block in relevant))
             evidence.extend(
-                (
-                    {"id": block["id"], "text": block["text"][:1200]}
-                    for block in relevant[:8]
-                )
+                ({"id": block["id"], "text": block["text"][:1200]} for block in relevant[:8])
             )
         packet["location_evidence"] = evidence
         packet["location_evidence_incomplete"] = incomplete
@@ -1110,13 +998,9 @@ class ScreeningService:
                 raise AssessmentError("shared screening profile path escapes the batch")
             raw = path.read_bytes()
             if _sha256(raw) != shared["hash"]:
-                raise AssessmentError(
-                    "shared screening profile changed after preparation"
-                )
+                raise AssessmentError("shared screening profile changed after preparation")
             if _sha256(json.loads(raw)["content"].encode()) != manifest["profile_hash"]:
-                raise AssessmentError(
-                    "shared screening profile does not match the profile"
-                )
+                raise AssessmentError("shared screening profile does not match the profile")
         with self.database.unit_of_work() as work:
             registered = work.normalization.profile_version(str(manifest["profile_id"]))
         if registered is None or (
@@ -1148,9 +1032,7 @@ class ScreeningService:
             )
         ]
         snippets = [
-            {"id": b["id"], "text": b["text"]}
-            for b in arrangement_blocks
-            if len(b["text"]) <= 160
+            {"id": b["id"], "text": b["text"]} for b in arrangement_blocks if len(b["text"]) <= 160
         ][:3]
         return {
             "version_id": document["version_id"],
@@ -1176,9 +1058,7 @@ class ScreeningService:
             packet.get("remote_policy") or "",
             *(b["text"] for b in packet.get("work_arrangement_evidence", [])),
         ]
-        if any(
-            (re.search("remote|homeoffice|hybrid|mobil", text, re.I) for text in texts)
-        ):
+        if any((re.search("remote|homeoffice|hybrid|mobil", text, re.I) for text in texts)):
             return False
         return any(
             (
@@ -1204,11 +1084,7 @@ class ScreeningService:
                     "SELECT version_id FROM clean_observation_versions WHERE observation_id=? AND extractor_version=?",
                     (key, EXTRACTOR_VERSION),
                 ).fetchone()
-            doc = (
-                self.cleaner.get(version["version_id"])
-                if version
-                else self.cleaner.preview(row)
-            )
+            doc = self.cleaner.get(version["version_id"]) if version else self.cleaner.preview(row)
         else:
             doc = self.cleaner.current(row)
         packet = self._thin_packet(doc)
@@ -1245,9 +1121,7 @@ class ScreeningService:
             for candidate in handled
             if (key := self._exact_duplicate_key(self._packet(candidate)))
         }
-        prepared: list[
-            tuple[dict[str, Any], dict[str, Any], PrefilterDecision, int, int]
-        ] = []
+        prepared: list[tuple[dict[str, Any], dict[str, Any], PrefilterDecision, int, int]] = []
         for candidate in candidates:
             if (
                 older_than_backlog_window(
@@ -1347,18 +1221,12 @@ class ScreeningService:
             reverse=True,
         )
         prepared.sort(
-            key=lambda value: self.location_policy.source_rank(
-                str(value[0]["source_name"])
-            )
+            key=lambda value: self.location_policy.source_rank(str(value[0]["source_name"]))
         )
         prepared.sort(
-            key=lambda value: self.location_policy.rank(
-                self.location_policy.classify(value[1])
-            )
+            key=lambda value: self.location_policy.rank(self.location_policy.classify(value[1]))
         )
-        unique: list[
-            tuple[dict[str, Any], dict[str, Any], PrefilterDecision, int, int]
-        ] = []
+        unique: list[tuple[dict[str, Any], dict[str, Any], PrefilterDecision, int, int]] = []
         seen_keys = set(handled_keys)
         for value in prepared:
             duplicate_key = self._exact_duplicate_key(value[1])
@@ -1369,9 +1237,7 @@ class ScreeningService:
                 seen_keys.add(duplicate_key)
             unique.append(value)
         ordered = tuple((value[0] for value in unique))
-        bands = {
-            f"L{location}R{role}": 0 for location in range(1, 4) for role in range(1, 4)
-        }
+        bands = {f"L{location}R{role}": 0 for location in range(1, 4) for role in range(1, 4)}
         for _, _, decision, _, _ in unique:
             bands[f"L{decision.location_band}R{decision.role_band}"] += 1
         statistics = self._queue_statistics(ordered)
@@ -1385,9 +1251,7 @@ class ScreeningService:
                 **statistics,
                 "limit_previews": {
                     str(limit): self._queue_statistics(ordered[:limit])
-                    for limit in sorted(
-                        {min(limit, len(ordered)) for limit in (10, 30, 50, 100)}
-                    )
+                    for limit in sorted({min(limit, len(ordered)) for limit in (10, 30, 50, 100)})
                     if limit > 0
                 },
             },
@@ -1442,17 +1306,14 @@ class ScreeningService:
             "by_location": locations,
             "location_sources": location_sources,
             "by_source": {
-                source: sum((row["source_name"] == source for row in ordered))
-                for source in sources
+                source: sum((row["source_name"] == source for row in ordered)) for source in sources
             },
             "by_age": ages,
             "oldest_received_at": utc_text(min(dates)) if dates else None,
             "newest_received_at": utc_text(max(dates)) if dates else None,
         }
 
-    def _exclusion_reason(
-        self, candidate: dict[str, Any], packet: dict[str, Any]
-    ) -> str | None:
+    def _exclusion_reason(self, candidate: dict[str, Any], packet: dict[str, Any]) -> str | None:
         if packet.get("fetch_state") == "unavailable":
             return "vacancy_unavailable"
         if self.clean_input:
@@ -1485,16 +1346,10 @@ class ScreeningService:
         employer = cls._normalized(packet.get("employer"))
         locations = tuple(
             sorted(
-                (
-                    cls._normalized(location)
-                    for location in packet.get("locations", ())
-                    if location
-                )
+                (cls._normalized(location) for location in packet.get("locations", ()) if location)
             )
         )
-        return (
-            (employer, title, locations) if employer and title and locations else None
-        )
+        return (employer, title, locations) if employer and title and locations else None
 
     @classmethod
     def _priority(cls, packet: dict[str, Any]) -> int:
@@ -1554,9 +1409,7 @@ class AssessmentService:
         if limit <= 0 or limit > 25:
             raise AssessmentError("assessment batch limit must be between 1 and 25")
         if identities is not None and (not identities or len(identities) > 25):
-            raise AssessmentError(
-                "selected assessment batch must contain between 1 and 25 jobs"
-            )
+            raise AssessmentError("selected assessment batch must contain between 1 and 25 jobs")
         profile = self.ensure_profile(profile_path)
         with self.database.unit_of_work() as work:
             candidates = (
@@ -1567,9 +1420,7 @@ class AssessmentService:
                 )
             )
         if not candidates:
-            raise NoAssessmentCandidates(
-                "no new or changed observations need profile assessment"
-            )
+            raise NoAssessmentCandidates("no new or changed observations need profile assessment")
         clean_documents: dict[str, dict[str, Any]] = {}
         skipped: list[dict[str, Any]] = []
         prompt_version = CLEAN_PROMPT_VERSION if self.clean_input else PROMPT_VERSION
@@ -1583,9 +1434,7 @@ class AssessmentService:
                 if (
                     location_policy.enabled
                     and location_policy.strict_locations_only
-                    and (
-                        not location_policy.classify(location_packet(document)).admitted
-                    )
+                    and (not location_policy.classify(location_packet(document)).admitted)
                 ):
                     reason = "location_outside_scope"
                 elif document["quality"]["state"] != "ready":
@@ -1644,13 +1493,8 @@ class AssessmentService:
             shared_profile = {"path": "profile.json", "hash": _sha256(profile_bytes)}
         for candidate in candidates:
             artifact_path = (self.data_dir / str(candidate["relative_path"])).resolve()
-            if (
-                not artifact_path.is_relative_to(self.data_dir)
-                or not artifact_path.is_file()
-            ):
-                raise AssessmentError(
-                    f"missing evidence artifact for {candidate['id']}"
-                )
+            if not artifact_path.is_relative_to(self.data_dir) or not artifact_path.is_file():
+                raise AssessmentError(f"missing evidence artifact for {candidate['id']}")
             content = artifact_path.read_bytes()
             if _sha256(content) != candidate["artifact_hash"]:
                 raise AssessmentError(f"evidence hash mismatch for {candidate['id']}")
@@ -1748,9 +1592,7 @@ class AssessmentService:
                         "INSERT INTO clean_assessment_items VALUES (?,?)",
                         (
                             prepared_item["id"],
-                            clean_documents[prepared_item["observation_id"]][
-                                "version_id"
-                            ],
+                            clean_documents[prepared_item["observation_id"]]["version_id"],
                         ),
                     )
         return {
@@ -1829,17 +1671,13 @@ class AssessmentService:
         errors: list[dict[str, Any]] = []
         valid: list[dict[str, Any]] = []
         seen: set[str] = set()
-        for line_number, line in enumerate(
-            output.read_text(encoding="utf-8").splitlines(), 1
-        ):
+        for line_number, line in enumerate(output.read_text(encoding="utf-8").splitlines(), 1):
             if not line.strip():
                 continue
             try:
                 record = json.loads(line)
             except json.JSONDecodeError as error:
-                errors.append(
-                    {"line": line_number, "errors": [f"invalid JSON: {error}"]}
-                )
+                errors.append({"line": line_number, "errors": [f"invalid JSON: {error}"]})
                 continue
             record_errors = self._validate_record(
                 record, batch, expected, manifest_items, manifest, seen
@@ -1864,9 +1702,7 @@ class AssessmentService:
                     )
                 valid.append(record)
                 seen.add(str(record["work_item_id"]))
-        missing = sorted(
-            set(expected) - seen - {str(e.get("work_item_id")) for e in errors}
-        )
+        missing = sorted(set(expected) - seen - {str(e.get("work_item_id")) for e in errors})
         errors.extend(
             (
                 {
@@ -1888,23 +1724,15 @@ class AssessmentService:
             _json_bytes(report),
         )
         rejected_ids = {
-            str(error["work_item_id"])
-            for error in errors
-            if error.get("work_item_id") in expected
+            str(error["work_item_id"]) for error in errors if error.get("work_item_id") in expected
         }
         with self.database.unit_of_work() as work:
             for record in valid:
-                work.normalization.set_item_status(
-                    str(record["work_item_id"]), "validated"
-                )
+                work.normalization.set_item_status(str(record["work_item_id"]), "validated")
             for item_id in rejected_ids:
                 work.normalization.set_item_status(item_id, "rejected")
-            work.normalization.set_batch_status(
-                batch_id, "validated" if not errors else "partial"
-            )
-        return ValidationResult(
-            batch_id, len(valid), len(errors), tuple(errors), tuple(valid)
-        )
+            work.normalization.set_batch_status(batch_id, "validated" if not errors else "partial")
+        return ValidationResult(batch_id, len(valid), len(errors), tuple(errors), tuple(valid))
 
     def import_batch(self, batch_id: str) -> dict[str, Any]:
         validation = self.validate(batch_id)
@@ -1923,9 +1751,7 @@ class AssessmentService:
         }
         profile = {
             "id": manifest["profile_id"],
-            "profile_name": str(manifest["profile_id"])
-            .removeprefix("profile_")
-            .rsplit("_v", 1)[0],
+            "profile_name": str(manifest["profile_id"]).removeprefix("profile_").rsplit("_v", 1)[0],
             "version": manifest["profile_version"],
             "content_hash": manifest["profile_hash"],
             "relative_path": manifest["profile_path"],
@@ -1974,18 +1800,14 @@ class AssessmentService:
                     "remote_policy": _vacancy_value(vacancy, "remote_policy"),
                     "employment_type": _vacancy_value(vacancy, "employment_type"),
                     "seniority": _vacancy_value(vacancy, "seniority"),
-                    "description_summary": _vacancy_value(
-                        vacancy, "description_summary"
-                    ),
+                    "description_summary": _vacancy_value(vacancy, "description_summary"),
                     "requirements_json": json.dumps(
                         _vacancy_list(vacancy, "mandatory_requirements"),
                         ensure_ascii=False,
                     ),
                     "application_url": _vacancy_value(vacancy, "application_url"),
                     "publication_date": _vacancy_value(vacancy, "publication_date"),
-                    "application_deadline": _vacancy_value(
-                        vacancy, "application_deadline"
-                    ),
+                    "application_deadline": _vacancy_value(vacancy, "application_deadline"),
                     "language": _vacancy_value(vacancy, "language"),
                     "keywords_json": json.dumps(
                         _vacancy_list(vacancy, "keywords"), ensure_ascii=False
@@ -1994,9 +1816,7 @@ class AssessmentService:
                     "uncertainty_notes_json": json.dumps(
                         evaluation["missing_information"], ensure_ascii=False
                     ),
-                    "result_json": json.dumps(
-                        record, ensure_ascii=False, sort_keys=True
-                    ),
+                    "result_json": json.dumps(record, ensure_ascii=False, sort_keys=True),
                     "prompt_id": record["prompt_id"],
                     "prompt_version": record["prompt_version"],
                     "model_id": record["model_id"],
@@ -2059,9 +1879,7 @@ class AssessmentService:
                     "assessment_confidence": evaluation["assessment_confidence"],
                     "recommendation": evaluation["recommendation"],
                     "summary": evaluation["summary"],
-                    "strengths_json": json.dumps(
-                        evaluation["strengths"], ensure_ascii=False
-                    ),
+                    "strengths_json": json.dumps(evaluation["strengths"], ensure_ascii=False),
                     "gaps_json": json.dumps(evaluation["gaps"], ensure_ascii=False),
                     "deal_breakers_json": json.dumps(
                         evaluation["deal_breakers"], ensure_ascii=False
@@ -2069,9 +1887,7 @@ class AssessmentService:
                     "missing_information_json": json.dumps(
                         evaluation["missing_information"], ensure_ascii=False
                     ),
-                    "result_json": json.dumps(
-                        record, ensure_ascii=False, sort_keys=True
-                    ),
+                    "result_json": json.dumps(record, ensure_ascii=False, sort_keys=True),
                     "prompt_id": record["prompt_id"],
                     "prompt_version": record["prompt_version"],
                     "model_id": record["model_id"],
@@ -2081,9 +1897,7 @@ class AssessmentService:
                 changed = work.normalization.upsert_evaluation(evaluation_row)
                 imported += int(changed)
                 unchanged += int(not changed)
-                work.normalization.set_item_status(
-                    str(record["work_item_id"]), "imported"
-                )
+                work.normalization.set_item_status(str(record["work_item_id"]), "imported")
             work.normalization.set_batch_status(
                 batch_id, "imported" if validation.rejected_count == 0 else "partial"
             )
@@ -2112,13 +1926,9 @@ class AssessmentService:
             return ["result must be a JSON object"]
         errors: list[str] = []
         if set(record) != RECORD_KEYS:
-            errors.append(
-                "result fields do not exactly match vacancy-assessment schema v1"
-            )
+            errors.append("result fields do not exactly match vacancy-assessment schema v1")
         if _contains_mojibake(record) or _damaged_output_text(record):
-            errors.append(
-                "result text appears to contain incorrectly decoded UTF-8 (mojibake)"
-            )
+            errors.append("result text appears to contain incorrectly decoded UTF-8 (mojibake)")
         item_id = record.get("work_item_id")
         if not isinstance(item_id, str) or item_id not in expected:
             return ["unknown work_item_id"]
@@ -2137,10 +1947,7 @@ class AssessmentService:
         for key, expected_value in checks.items():
             if record.get(key) != expected_value:
                 errors.append(f"{key} does not match the prepared batch")
-        item_path = (
-            self._data_path(str(batch["input_directory"]))
-            / manifest_items[item_id]["path"]
-        )
+        item_path = self._data_path(str(batch["input_directory"])) / manifest_items[item_id]["path"]
         if _sha256(item_path.read_bytes()) != expected[item_id]["input_hash"]:
             return [*errors, "prepared input changed after batch creation"]
         if record.get("status") not in {"completed", "insufficient_evidence"}:
@@ -2158,18 +1965,14 @@ class AssessmentService:
             if set(vacancy) != set(VACANCY_FIELDS):
                 errors.append("vacancy fields do not exactly match schema v1")
             for name in VACANCY_FIELDS:
-                errors.extend(
-                    self._validate_field(name, vacancy.get(name), allowed_hashes)
-                )
+                errors.extend(self._validate_field(name, vacancy.get(name), allowed_hashes))
             url = vacancy.get("application_url", {}).get("value")
             if url is not None and (
                 not isinstance(url, str)
                 or urlparse(url).scheme != "https"
                 or (not urlparse(url).netloc)
             ):
-                errors.append(
-                    "application_url.value must be an absolute HTTPS URL or null"
-                )
+                errors.append("application_url.value must be an absolute HTTPS URL or null")
             for name in DATE_FIELDS:
                 value = vacancy.get(name, {}).get("value")
                 if isinstance(value, str):
@@ -2194,9 +1997,7 @@ class AssessmentService:
         errors = []
         required = RECORD_KEYS - {"vacancy"} | {"clean_version_id", "citations"}
         if set(record) != required:
-            errors.append(
-                "result fields do not exactly match vacancy-assessment schema v2"
-            )
+            errors.append("result fields do not exactly match vacancy-assessment schema v2")
         if _contains_mojibake(record) or _damaged_output_text(record):
             errors.append("result contains incorrectly decoded UTF-8")
         item_id = record.get("work_item_id")
@@ -2204,10 +2005,7 @@ class AssessmentService:
             return [*errors, "unknown work_item_id"]
         if item_id in seen:
             return [*errors, "duplicate work_item_id"]
-        path = (
-            self._data_path(str(batch["input_directory"]))
-            / manifest_items[item_id]["path"]
-        )
+        path = self._data_path(str(batch["input_directory"])) / manifest_items[item_id]["path"]
         content = path.read_bytes()
         if _sha256(content) != expected[item_id]["input_hash"]:
             return [*errors, "prepared input changed after batch creation"]
@@ -2238,9 +2036,7 @@ class AssessmentService:
             assessment_packet(document) != item["vacancy"]
             or document["quality"]["state"] != "ready"
         ):
-            errors.append(
-                "prepared clean vacancy does not match its immutable ready version"
-            )
+            errors.append("prepared clean vacancy does not match its immutable ready version")
         with self.database.unit_of_work() as work:
             assert work.connection is not None
             binding = work.connection.execute(
@@ -2265,13 +2061,9 @@ class AssessmentService:
                         else "reject"
                     )
                     if evaluation.get("recommendation") != recommendation:
-                        errors.append(
-                            "recommendation does not match the suitability score band"
-                        )
+                        errors.append("recommendation does not match the suitability score band")
                     if evaluation.get("deal_breakers") and score >= 25:
-                        errors.append(
-                            "confirmed deal breakers require a reject score below 25"
-                        )
+                        errors.append("confirmed deal breakers require a reject score below 25")
         allowed = {b["id"] for b in item["vacancy"]["blocks"]}
         allowed |= {"f." + name for name in item["vacancy"]["facts"]}
         claims = set()
@@ -2307,9 +2099,7 @@ class AssessmentService:
         return errors
 
     @staticmethod
-    def _validate_field(
-        name: str, field: object, allowed_hashes: set[str]
-    ) -> list[str]:
+    def _validate_field(name: str, field: object, allowed_hashes: set[str]) -> list[str]:
         if not isinstance(field, dict):
             return [f"vacancy.{name} must be a field object"]
         errors: list[str] = []
@@ -2322,8 +2112,7 @@ class AssessmentService:
             errors.append(f"vacancy.{name}.status is invalid")
         if name in LIST_FIELDS:
             if value is not None and (
-                not isinstance(value, list)
-                or not all((isinstance(item, str) for item in value))
+                not isinstance(value, list) or not all((isinstance(item, str) for item in value))
             ):
                 errors.append(f"vacancy.{name}.value must be a string array or null")
         elif value is not None and (not isinstance(value, str)):
@@ -2354,29 +2143,19 @@ class AssessmentService:
             errors.append("evaluation fields do not exactly match schema v1")
         for name in ("suitability_score", "assessment_confidence"):
             value = evaluation.get(name)
-            if (
-                not isinstance(value, int)
-                or isinstance(value, bool)
-                or (not 0 <= value <= 100)
-            ):
+            if not isinstance(value, int) or isinstance(value, bool) or (not 0 <= value <= 100):
                 errors.append(f"evaluation.{name} must be an integer from 0 to 100")
         if evaluation.get("recommendation") not in {"high", "medium", "low", "reject"}:
             errors.append("evaluation.recommendation is invalid")
-        if not isinstance(evaluation.get("summary"), str) or not evaluation.get(
-            "summary"
-        ):
+        if not isinstance(evaluation.get("summary"), str) or not evaluation.get("summary"):
             errors.append("evaluation.summary must be a non-empty string")
         for name in ("strengths", "gaps", "deal_breakers", "missing_information"):
             value = evaluation.get(name)
-            if not isinstance(value, list) or not all(
-                (isinstance(item, str) for item in value)
-            ):
+            if not isinstance(value, list) or not all((isinstance(item, str) for item in value)):
                 errors.append(f"evaluation.{name} must be a string array")
         components = evaluation.get("score_components")
         if not isinstance(components, dict) or set(components) != COMPONENTS:
-            errors.append(
-                "evaluation.score_components fields do not exactly match schema v1"
-            )
+            errors.append("evaluation.score_components fields do not exactly match schema v1")
         else:
             for name, component in components.items():
                 if not isinstance(component, dict) or set(component) != {
@@ -2387,17 +2166,11 @@ class AssessmentService:
                     continue
                 score = component["score"]
                 if score is not None and (
-                    not isinstance(score, int)
-                    or isinstance(score, bool)
-                    or (not 0 <= score <= 100)
+                    not isinstance(score, int) or isinstance(score, bool) or (not 0 <= score <= 100)
                 ):
-                    errors.append(
-                        f"evaluation.score_components.{name}.score is invalid"
-                    )
+                    errors.append(f"evaluation.score_components.{name}.score is invalid")
                 if not isinstance(component["rationale"], str):
-                    errors.append(
-                        f"evaluation.score_components.{name}.rationale must be a string"
-                    )
+                    errors.append(f"evaluation.score_components.{name}.rationale must be a string")
         return errors
 
     def _load_batch(
@@ -2424,9 +2197,7 @@ class AssessmentService:
                 raise AssessmentError("shared profile path escapes the batch")
             shared_bytes = shared_path.read_bytes()
             if _sha256(shared_bytes) != profile_document["hash"]:
-                raise AssessmentError(
-                    "shared profile snapshot changed after preparation"
-                )
+                raise AssessmentError("shared profile snapshot changed after preparation")
             shared = json.loads(shared_bytes)
             if _sha256(shared["content"].encode()) != manifest["profile_hash"]:
                 raise AssessmentError(
@@ -2435,9 +2206,7 @@ class AssessmentService:
         with self.database.unit_of_work() as work:
             registered = work.normalization.profile_version(str(manifest["profile_id"]))
         if registered is None:
-            raise AssessmentError(
-                f"batch profile is not registered: {manifest['profile_id']}"
-            )
+            raise AssessmentError(f"batch profile is not registered: {manifest['profile_id']}")
         if (
             registered["version"] != manifest["profile_version"]
             or registered["content_hash"] != manifest["profile_hash"]

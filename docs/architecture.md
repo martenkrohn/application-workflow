@@ -1,54 +1,26 @@
-# Architecture and provenance
+# Architecture
 
-## Working layers
+The workflow separates evidence, judgement and human decisions.
 
-| Layer | Responsibility | Origin |
-| --- | --- | --- |
-| Domain | Source items, quality checks, immutable clean vacancy documents | Transferred; website-specific branches and field aliases removed |
-| Collection | Per-source attempts, artifacts, observations, checkpoints and failure recovery | Existing collection service |
-| Infrastructure | SQLite repositories, 20 migrations, artifact hashes, locking and local configuration | Existing implementation; personal mock address and provider priorities removed |
-| Assessment | Profile snapshots, bounded manifests, input identities, citations, validation and persistent evaluations | Existing detailed-assessment service; neutral profile default, provider-specific fetch-state integration removed |
-| Portfolio orchestration | Exact human selection, strict whole-batch import, deterministic simulation and decisions | Added for the review edition |
-| Source adapter | Parser for a self-authored HTML fixture | Added; same original SourceAdapter/SourceItem boundary |
-| Mail demonstration | Fictional message handoff, identity and quotation validation, stored proposals | Added; uses the classification categories of the original workflow, not its production mailbox connector |
-| Dashboard | Quick review, assessment queue, detailed review, filters, dialogs and table interactions | Original frontend, dashboard service, queue service and grouping; personal labels and source-specific rules removed |
-| Application workspaces | Human starts a folder, collaborates on documents, tracks decisions and moves folders by status | Original decision/move lifecycle; private document scaffolding replaced with fictional Markdown materials |
-| CLI | Reproducible demo and explicit prepare, validate and import commands | Small entry point added for the portfolio |
+1. A source adapter emits records with stable identities and source evidence. The private setup handles source authentication interactively; this edition bundles a neutral local HTML adapter.
+2. Collection stores content-addressed artifacts and retrieval observations. Normalization creates immutable clean versions linked to those observations.
+3. Compact screening packets carry a shared profile and a reduced view of each vacancy. The included Codex runner pins `gpt-6-luna` and `model_reasoning_effort="low"`.
+4. Valid screening output is imported into SQLite. Promoted, unassessed vacancies are automatically packaged into detailed batches.
+5. The human starts the detailed handoff in Codex with `gpt-6.1-sol`. The task reads fuller evidence, returns the defined JSONL contract, validates and imports the completed batch.
+6. The dashboard reads stored assessments and human shortlist decisions.
 
-This is an adapted runnable slice, not a copy of the complete private project. The private project remains unchanged. File-level hashes and transfer notes are retained locally outside version control.
+## Preserved implementation
 
-## Source normalization
+The collection service, artifact store, SQL repositories, clean-data service, assessment validation and dashboard originated in the private working project. Source-specific extraction and priorities were removed. The compact runner, neutral fixtures, focused UI and fixture-only static export are adaptations for this portfolio.
 
-A source adapter parses its own upstream format and emits JSON in neutral field names. The retained normalizer turns those values and description lines into facts, evidence blocks and immutable versions. Provider names are no longer used for extracting facts or ranking collection candidates.
+The remaining schema migrations retain their original numbers. Fresh installations do not create email-review, application-folder or dashboard-queue tables. Existing local demo databases are left in place; retired tables are no longer accessed by this edition.
 
-The standard source item carries its stable identity, public URL, media type and raw bytes. The core hashes and stores the emitted bytes. For the local HTML adapter these are the extracted neutral records; they are not a byte-for-byte HTTP-response archive. No live request is made by that adapter.
+## Batch contracts
 
-## Assessment handoff
+Manifests enumerate the exact work, profile version and input hashes. Shared profile content is stored once per batch. Each item has its own identity and content hash. Detailed results cite evidence blocks and are checked against the frozen input. Validation establishes structural consistency and traceability, not that a judgement is correct.
 
-The person chooses identities explicitly. The existing AssessmentService freezes the fictional profile and selected clean versions into a manifest and item files. Every item is bound to the batch, observation, input hash, profile version and clean vacancy version. A separate HANDOFF.md explains the agent task and the human import step.
+The quick runner supplies the compact package as data and uses a read-only Codex sandbox. It checks the selected model identity and imports only a complete valid batch. Failed work remains prepared for inspection and rerun. Detailed assessment retains the explicit human start; there is no background detailed-assessment runner.
 
-The agent writes results in JSONL. The application checks identity, immutability, score/recommendation consistency and valid evidence references. The portfolio wrapper requires the complete batch to pass before importing. The human's application decision is stored separately from the recommendation.
+## Hosted preview
 
-A modified-input validation path was corrected in the review edition: hash mismatches now return a validation error before attempting to read fields from the changed item.
-
-## Storage and packaging
-
-The database schema is retained to keep the original storage contracts and migration sequence. Some tables support original workflows not exposed by this edition. New portfolio decisions and mail proposals have separate tables; generated data is never committed. Independent named workspaces keep review attempts separate without deletion.
-
-Runtime code uses only Python's standard library. The installed package includes migrations and dashboard assets. Example content, prompts and project configuration remain in the checkout, which is the working directory for CLI usage.
-
-## Intentional limits
-
-- No bundled website-specific scraper, browser automation or live mailbox connector.
-- No automatic model execution, scheduler or multi-provider runner.
-- No claim of a universal HTML parser or complete parity with the production workflow.
-- Validation establishes contract consistency, not the truth of an agent judgement.
-- The local dashboard is a single-user review tool and binds only to loopback.
-
-See [source adapters](source-adapters.md) and [human/agent interaction](human-ai-workflow.md).
-
-## Dashboard preservation
-
-The portfolio uses the working project's `web/static/index.html`, `app.js` and `styles.css`, `web/dashboard.py`, `application/dashboard.py` and `application/assessment_queue.py`. It keeps the original three-view review flow. Adaptations are limited to neutral labels, fictional source links, isolated runtime paths, agent-neutral handoff wording and local HTTP safeguards. Private folder discovery is omitted; newly created demo folders are registered directly.
-
-Quick priorities are labelled presets, not validated agent outputs. Detailed example assessments pass through the normal preparation/validation/import contract. Mail proposals remain a separate CLI demonstration and are not presented as an original dashboard feature.
+`export-dashboard` creates a fresh temporary database exclusively from the tracked fictional fixtures, then exports reviewed results and the existing frontend. It does not load the user's runtime database. The hosted preview runs entirely in the browser; shortlist changes use browser storage. The local dashboard uses SQLite and loopback-only HTTP with token and origin checks for decisions.

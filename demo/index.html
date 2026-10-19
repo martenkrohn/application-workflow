@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="dashboard-token" content="__CSRF_TOKEN__">
+  <meta name="description" content="Explore the output of an automated vacancy collection and two-stage AI assessment workflow. Fictional demonstration data.">
+  <title>Application Workflow — Dashboard demo</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="masthead">
+    <div><p class="eyebrow">APPLICATION WORKFLOW · DASHBOARD DEMO</p><h1>From vacancy evidence to a focused shortlist</h1><p class="subtitle">Explore the dashboard used to review structured AI assessments. All jobs and assessments shown here are fictional examples.</p><p><a href="https://github.com/martenkrohn/application-workflow" target="_blank" rel="noopener">Read the project story ↗</a></p></div>
+    <div class="header-actions"><button id="theme" class="secondary" type="button">Dark mode</button><button id="refresh" class="secondary" type="button">Reset demo shortlist</button></div>
+  </header>
+  <main>
+    <section class="demo-guide"><b>Try the result:</b> filter by role or location, open an assessment's details, then save a vacancy to your shortlist. The real workflow collects evidence, screens compact records with Luna Low, and prepares detailed batches that I start in Codex.</section>
+    <section id="metrics" class="metrics" aria-label="Vacancy counts"></section>
+    <section class="controls" aria-label="Filters">
+      <label class="search">Search<input id="search" type="search" placeholder="Title, employer, gap, location…"></label>
+      <label>Collected<select id="scrapeDay"><option value="">All collection dates</option></select></label>
+      <label>Minimum fit<input id="minFit" type="number" min="0" max="100" value="65"></label>
+      <fieldset id="locationBuckets" class="location-buckets"><legend>Location priorities</legend><div id="locationBucketOptions" class="bucket-options"></div></fieldset>
+      <label class="check"><input id="hideExpired" type="checkbox" checked>Hide expired</label>
+      <label class="check"><input id="onlySaved" type="checkbox">Your shortlist only</label>
+    </section>
+    <section class="results">
+      <div class="results-head"><h2>Assessed vacancies</h2><div class="results-tools"><span id="resultCount" role="status"></span><button id="resetColumns" class="small secondary" type="button">Reset column widths</button></div></div>
+      <p class="subtle">Scores support review; they are not probabilities. Lower Minimum fit to 0 to inspect the weaker matches. Column headings sort the results.</p>
+      <div id="notice" role="status" hidden></div>
+      <div class="table-wrap"><table><thead id="tableHead"></thead><tbody id="tableBody"></tbody></table></div>
+    </section>
+    <footer class="demo-footer">Fictional data · Illustrative assessments · Shortlist choices stay in this browser in the hosted demo.</footer>
+  </main>
+  <dialog id="details"><button class="dialog-close" aria-label="Close">×</button><div id="detailContent"></div></dialog>
+  <script src="demo-data.js"></script><script src="app.js" defer></script>
+</body>
+</html>

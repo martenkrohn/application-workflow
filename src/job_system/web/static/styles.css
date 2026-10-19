@@ -107,3 +107,5 @@ button:disabled { opacity:.55; cursor:wait; }
   tr:hover td { background:transparent; }
   tbody tr:hover { background:var(--row-hover); }
 }
+
+.demo-guide{padding:1rem 1.2rem;border:1px solid var(--line,#cad5df);border-radius:12px;margin-bottom:1.2rem;line-height:1.6}.demo-footer{padding:1.6rem 0;color:var(--muted,#637080);font-size:.85rem}.masthead h1{max-width:920px}.masthead a{color:inherit}.detail-section p{line-height:1.6}

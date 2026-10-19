@@ -10,9 +10,9 @@ from job_system.application.portfolio import PortfolioWorkflow
 
 def prepare(workflow: PortfolioWorkflow) -> str:
     workflow.collect()
-    return workflow.prepare(
-        [{"source": "demo-html", "external_id": "research-analyst"}]
-    )["batch_id"]
+    return workflow.prepare([{"source": "demo-html", "external_id": "research-analyst"}])[
+        "batch_id"
+    ]
 
 
 def output(workflow: PortfolioWorkflow, batch: str) -> Path:
@@ -27,14 +27,14 @@ def test_demo_uses_original_services_and_is_idempotent(
     assert first["vacancies"] == 6
     assert second["collection"]["sources"][0]["observations_unchanged"] == 3
     state = workflow.snapshot()
-    assert len(state["batches"]) == 1 and len(state["email"]) == 2
-    assert sum(v["simulated"] for v in state["vacancies"]) == 3
+    assert len(state["batches"]) == 1 and "email" not in state
+    assert sum(v["simulated"] for v in state["vacancies"]) == 6
     assert all(v["human_status"] == "new" for v in state["vacancies"])
     assert {
         v["assessment"]["evaluation"]["recommendation"]
         for v in state["vacancies"]
         if v["assessment"]
-    } == {"high", "medium", "reject"}
+    } == {"high", "medium", "low", "reject"}
 
 
 def test_human_choice_creates_exactly_one_task_without_running_agent(
@@ -59,21 +59,15 @@ def test_human_choice_creates_exactly_one_task_without_running_agent(
         [{"source": "demo-html", "external_id": "research-analyst"}] * 2,
     ],
 )
-def test_bad_selection_does_not_create_work(
-    workflow: PortfolioWorkflow, selection: list
-) -> None:
+def test_bad_selection_does_not_create_work(workflow: PortfolioWorkflow, selection: list) -> None:
     workflow.collect()
     with pytest.raises(ValueError):
         workflow.prepare(selection)
     assert workflow.batches() == []
 
 
-@pytest.mark.parametrize(
-    "fault", ["identity", "citation", "duplicate", "band", "boolean-score"]
-)
-def test_invalid_agent_output_is_not_imported(
-    workflow: PortfolioWorkflow, fault: str
-) -> None:
+@pytest.mark.parametrize("fault", ["identity", "citation", "duplicate", "band", "boolean-score"])
+def test_invalid_agent_output_is_not_imported(workflow: PortfolioWorkflow, fault: str) -> None:
     batch = prepare(workflow)
     workflow.simulate(batch)
     path = output(workflow, batch)
@@ -134,9 +128,7 @@ def test_import_does_not_decide_and_decisions_survive_collection(
     assert {v["human_status"] for v in workflow.vacancies()} == {"new"}
     workflow.decide("demo-html", "research-analyst", "interested")
     workflow.collect()
-    analyst = next(
-        v for v in workflow.vacancies() if v["external_id"] == "research-analyst"
-    )
+    analyst = next(v for v in workflow.vacancies() if v["external_id"] == "research-analyst")
     assert analyst["human_status"] == "interested"
     assert workflow.finish(batch)["unchanged"] == 1
 
@@ -174,9 +166,7 @@ def test_named_workspace_isolated_and_handoffs_keep_the_workspace(
     review = PortfolioWorkflow(workflow.root, "review")
     review.collect()
     assert all(v["assessment"] is None for v in review.vacancies())
-    batch = review.prepare(
-        [{"source": "demo-html", "external_id": "research-analyst"}]
-    )["batch_id"]
+    batch = review.prepare([{"source": "demo-html", "external_id": "research-analyst"}])["batch_id"]
     manifest = review.root / review.batch_paths(batch)["manifest"]
     handoff = (manifest.parent / "HANDOFF.md").read_text(encoding="utf-8")
     assert "--workspace review assessment validate" in handoff
@@ -188,13 +178,11 @@ def test_named_workspace_isolated_and_handoffs_keep_the_workspace(
     review.simulate(batch)
     review.finish(batch)
     review.demo()
-    assert len(review.mail_reviews()) == 2
-    assert (review.settings.data_dir / "mail-handoff/results.jsonl").is_file()
+    assert "email" not in review.snapshot()
+    assert not (review.settings.data_dir / "mail-handoff").exists()
 
 
-def test_trusted_private_adapter_boundary(
-    workflow: PortfolioWorkflow, monkeypatch
-) -> None:
+def test_trusted_private_adapter_boundary(workflow: PortfolioWorkflow, monkeypatch) -> None:
     import sys
     import types
 

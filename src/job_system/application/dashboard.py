@@ -8,7 +8,6 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from job_system.application.applications import ApplicationWorkspaceService
 from job_system.application.assessment import ScreeningService
 from job_system.application.cleaning import CleaningReadBatch
 from job_system.domain.location_policy import LocationPolicy, location_packet
@@ -77,37 +76,21 @@ class DashboardService:
     def snapshot(
         self, profile_id: str, *, context: DashboardReadContext | None = None
     ) -> dict[str, Any]:
-        self._backfill_workspaces(profile_id)
         with self.database.unit_of_work(read_only=True) as work:
             detailed_rows = work.normalization.evaluations(None, None, only_new=False)
             quick_rows = work.normalization.screening_dashboard(None, None)
-            workspaces = {
-                str(item["group_id"]): item for item in work.reviews.workspaces(None)
-            }
         if self.enabled_sources:
             detailed_rows = tuple(
-                (
-                    row
-                    for row in detailed_rows
-                    if str(row["source_name"]) in self.enabled_sources
-                )
+                (row for row in detailed_rows if str(row["source_name"]) in self.enabled_sources)
             )
             quick_rows = tuple(
-                (
-                    row
-                    for row in quick_rows
-                    if str(row["source_name"]) in self.enabled_sources
-                )
+                (row for row in quick_rows if str(row["source_name"]) in self.enabled_sources)
             )
-        assessed = {
-            (str(row["source_name"]), str(row["external_id"])) for row in detailed_rows
-        }
+        assessed = {(str(row["source_name"]), str(row["external_id"])) for row in detailed_rows}
         if context is None:
             context = DashboardReadContext()
         context.rows = quick_rows
-        cleaner = context.cleaner = CleaningReadBatch(
-            self.data_dir, self.database, quick_rows
-        )
+        cleaner = context.cleaner = CleaningReadBatch(self.data_dir, self.database, quick_rows)
         screening = ScreeningService(
             self.project_root,
             self.data_dir,
@@ -135,9 +118,7 @@ class DashboardService:
             saved_rows.append(row)
         quick_rows = tuple(saved_rows)
         coordinate_map = {
-            (str(row["source_name"]), str(row["external_id"])): row["preview"][
-                "coordinates"
-            ]
+            (str(row["source_name"]), str(row["external_id"])): row["preview"]["coordinates"]
             for row in quick_rows
             if row["preview"].get("coordinates") is not None
         }
@@ -152,7 +133,7 @@ class DashboardService:
             for row in quick_rows
             if (str(row["source_name"]), str(row["external_id"])) not in assessed
         )
-        detailed = self._detailed(profile_id, detailed_rows, workspaces, coordinate_map)
+        detailed = self._detailed(profile_id, detailed_rows, coordinate_map)
         for item in detailed:
             buckets = [
                 bucket_map[source["source"], source["external_id"]]
@@ -177,11 +158,7 @@ class DashboardService:
                 seen.add(key)
             unique_detailed.append(item)
         seen.update(assessed_duplicate_keys)
-        detailed = [
-            item
-            for item in unique_detailed
-            if item["workspace"] is None and item["review_status"] != "dismissed"
-        ]
+        detailed = [item for item in unique_detailed if item["review_status"] != "dismissed"]
         unique_quick = []
         for row in sorted(
             quick_rows,
@@ -205,9 +182,7 @@ class DashboardService:
                 else None
             )
             row["screening_exclusion_reason"] = reason
-            row["screening_exclusion_label"] = SCREENING_EXCLUSION_LABELS.get(
-                reason or ""
-            )
+            row["screening_exclusion_label"] = SCREENING_EXCLUSION_LABELS.get(reason or "")
             row["screening_location_status"] = (
                 screening.location_policy.classify(screening._packet(row)).status
                 if row["screening_score"] is None
@@ -244,28 +219,20 @@ class DashboardService:
         with self.database.unit_of_work() as work:
             current = work.reviews.decision(group_id, profile_id)
             cleaned_note = (
-                current["note"]
-                if note is None
-                else note.strip()
-                if note.strip()
-                else None
+                current["note"] if note is None else note.strip() if note.strip() else None
             )
-        return ApplicationWorkspaceService(self.data_dir, self.database).mark_by_group(
-            group_id, profile_id, status, source="dashboard", note=cleaned_note
-        )
-
-    def create_workspace(
-        self, group_id: str, profile_id: str, slug: str
-    ) -> dict[str, Any]:
-        return ApplicationWorkspaceService(self.data_dir, self.database).start(
-            group_id, profile_id, slug
-        )
+        with self.database.unit_of_work() as work:
+            changed = work.reviews.set_decision(
+                group_id, profile_id, status, cleaned_note, utc_text(SystemClock().now())
+            )
+            if not changed:
+                raise ValueError("unknown vacancy group")
+        return {"group_id": group_id, "status": status, "note": cleaned_note}
 
     def _detailed(
         self,
         profile_id: str,
         rows: tuple[dict[str, Any], ...],
-        workspaces: dict[str, dict[str, Any]],
         coordinate_map: dict[tuple[str, str], Any],
     ) -> list[dict[str, Any]]:
         output: list[dict[str, Any]] = []
@@ -273,20 +240,13 @@ class DashboardService:
         reviews = self._review_states(
             tuple(
                 (
-                    tuple(
-                        (
-                            (str(row["source_name"]), str(row["external_id"]))
-                            for row in group
-                        )
-                    )
+                    tuple(((str(row["source_name"]), str(row["external_id"])) for row in group))
                     for group in groups
                 )
             )
         )
         for group in groups:
-            members = tuple(
-                ((str(row["source_name"]), str(row["external_id"])) for row in group)
-            )
+            members = tuple(((str(row["source_name"]), str(row["external_id"])) for row in group))
             group_id, decision = reviews[members]
             result = merged_assessment_result(group)
             vacancy = result["vacancy"]
@@ -339,25 +299,18 @@ class DashboardService:
                         }
                         for row in group
                     ],
-                    "workspace": workspaces.get(group_id),
                 }
             )
         return output
 
-    def _quick(
-        self, profile_id: str, rows: tuple[dict[str, Any], ...]
-    ) -> list[dict[str, Any]]:
+    def _quick(self, profile_id: str, rows: tuple[dict[str, Any], ...]) -> list[dict[str, Any]]:
         output: list[dict[str, Any]] = []
         reviews = self._review_states(
-            tuple(
-                (((str(row["source_name"]), str(row["external_id"])),) for row in rows)
-            )
+            tuple((((str(row["source_name"]), str(row["external_id"])),) for row in rows))
         )
         for row in rows:
             preview = row["preview"]
-            group_id, decision = reviews[
-                (str(row["source_name"]), str(row["external_id"])),
-            ]
+            group_id, decision = reviews[(str(row["source_name"]), str(row["external_id"])),]
             output.append(
                 {
                     "group_id": group_id,
@@ -412,10 +365,6 @@ class DashboardService:
                     )
                     states[members] = (group_id, work.reviews.decision(group_id, None))
         return states
-
-    def _backfill_workspaces(self, profile_id: str) -> None:
-        """Portfolio workspaces are registered at creation; no private folder discovery."""
-        pass
 
 
 def _location_bucket(

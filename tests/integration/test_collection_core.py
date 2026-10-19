@@ -54,13 +54,9 @@ def test_repeated_collection_is_idempotent(tmp_path: Path) -> None:
     assert first.status == RunStatus.SUCCEEDED
     assert second.status == RunStatus.SUCCEEDED
     assert scalar(settings.database_path, "SELECT COUNT(*) FROM collection_runs") == 2
-    assert (
-        scalar(settings.database_path, "SELECT COUNT(*) FROM source_observations") == 2
-    )
+    assert scalar(settings.database_path, "SELECT COUNT(*) FROM source_observations") == 2
     assert scalar(settings.database_path, "SELECT COUNT(*) FROM raw_artifacts") == 2
-    assert (
-        scalar(settings.database_path, "SELECT COUNT(*) FROM artifact_retrievals") == 4
-    )
+    assert scalar(settings.database_path, "SELECT COUNT(*) FROM artifact_retrievals") == 4
     assert sum(item.observations_unchanged for item in second.sources) == 2
 
 
@@ -90,27 +86,19 @@ def test_source_failure_is_partial_and_recoverable(tmp_path: Path) -> None:
     assert partial.status == RunStatus.PARTIAL
     assert partial.sources[1].error_code == "FakeSourceError"
     assert recovered.status == RunStatus.SUCCEEDED
-    assert (
-        scalar(settings.database_path, "SELECT COUNT(*) FROM source_observations") == 2
-    )
-    summary = json.loads(
-        (settings.data_dir / partial.summary_path).read_text(encoding="utf-8")
-    )
+    assert scalar(settings.database_path, "SELECT COUNT(*) FROM source_observations") == 2
+    summary = json.loads((settings.data_dir / partial.summary_path).read_text(encoding="utf-8"))
     assert summary["status"] == "partial"
     assert "local logs" in summary["recovery"]
     assert "jobs collect" in summary["recovery"]
-    log = (settings.data_dir / "logs" / f"{partial.run_id}.jsonl").read_text(
-        encoding="utf-8"
-    )
+    log = (settings.data_dir / "logs" / f"{partial.run_id}.jsonl").read_text(encoding="utf-8")
     assert '"operation":"source_finished"' in log
     with closing(sqlite3.connect(settings.database_path)) as connection:
         connection.row_factory = sqlite3.Row
         alpha = connection.execute(
             "SELECT * FROM source_health WHERE source_name='alpha'"
         ).fetchone()
-        beta = connection.execute(
-            "SELECT * FROM source_health WHERE source_name='beta'"
-        ).fetchone()
+        beta = connection.execute("SELECT * FROM source_health WHERE source_name='beta'").fetchone()
     assert alpha is not None and dict(alpha)["state"] == "healthy"
     assert beta is not None and dict(beta)["state"] == "healthy"
     assert dict(beta)["consecutive_failures"] == 0
@@ -153,28 +141,35 @@ def test_read_only_transaction_does_not_reserve_writer_lock(tmp_path: Path) -> N
         with database.unit_of_work(read_only=True) as reader:
             assert reader.connection is not None
             assert (
-                reader.connection.execute(
-                    "SELECT count(*) FROM collection_runs"
-                ).fetchone()[0]
-                == 0
+                reader.connection.execute("SELECT count(*) FROM collection_runs").fetchone()[0] == 0
             )
             with pytest.raises(sqlite3.OperationalError, match="readonly"):
                 reader.connection.execute("DELETE FROM collection_runs")
     with database.unit_of_work(read_only=True) as reader:
         assert reader.connection is not None
-        assert (
-            reader.connection.execute(
-                "SELECT count(*) FROM collection_runs"
-            ).fetchone()[0]
-            == 1
-        )
+        assert reader.connection.execute("SELECT count(*) FROM collection_runs").fetchone()[0] == 1
 
 
 def test_migrations_backup_and_rollback(tmp_path: Path) -> None:
     settings = settings_for(tmp_path)
     database = Database(settings.database_path)
-    assert database.migrate() == 20
+    assert database.migrate() > 0
     assert database.migrate() == 0
+    with closing(database.connect()) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        assert {"source_observations", "vacancy_screenings", "job_evaluations"} <= tables
+        assert (
+            not {
+                "application_workspaces",
+                "application_emails",
+                "email_assessments",
+                "assessment_queue_drafts",
+            }
+            & tables
+        )
     with pytest.raises(RuntimeError), database.unit_of_work() as work:
         work.runs.create("run_rollback", "1", "fingerprint", "2026-01-01T00:00:00Z")
         raise RuntimeError("rollback")

@@ -1,28 +1,21 @@
 # Validation record
 
-Validated on 18 October 2026, using Python 3.13 on Windows.
+Updated on 19 October 2026 with Python 3.13 on Windows.
 
 | Check | Observed result |
 | --- | --- |
-| Automated tests | 46 passed: transferred collection/storage tests, portfolio boundaries and original dashboard integration |
-| Default demonstration | Six fictional HTML vacancies collected and normalized; three detailed assessments imported through validation, three labelled quick-review presets; two fictional mail proposals stored |
-| Repeated collection | Existing records retained; unchanged observations recognised |
-| Human selection | Exact selected item count; no agent or output automatically created |
-| Assessment validation | Bad identities, duplicate output, invalid citations, inconsistent score bands, modified inputs and profile snapshots rejected |
-| Human decisions | Import does not change the human decision; explicit decisions survive refresh |
-| Independent workspaces | Separate datasets and handoff commands; unfinished work is not overwritten by the demo |
-| Private adapter boundary | An importable test adapter factory successfully collected neutral records |
-| Mail proposals | Input hashes, classification, confidence and actual quotations checked; incomplete batches refused |
-| Local HTTP API | Same-origin mutations and loopback host enforcement checked |
-| Original dashboard, 390px / 1280px | Original three views, details, filters, theme toggle, manual queue, preview, checkbox edits, fill, prepare, source links and application folders passed; no JavaScript errors |
-| Workspace lifecycle | Workspace creation, fictional documents, persisted decisions, status-driven folder move and path rejection checked |
-| Packaging | Wheel built without network; installed in a fresh venv; installed CLI demo passed |
-| Fresh checkout export | Selected repository files run independently; no private working files required |
-| Repository content | Current files and all preparation commits checked for production portal names, credential patterns and personal addresses/paths; no matches |
-| Package resources | Dashboard assets and all migrated schema files available from the installed wheel |
+| Automated tests | 42 passed: collection, storage, rollback/backup, immutable evidence, assessment validation, decisions, compact screening orchestration and focused dashboard |
+| Fictional demonstration | Six vacancies collected, normalized, assessed with explicitly simulated fixtures and imported through the real validator |
+| Model routing | Controlled subprocess test verifies `gpt-6-luna`, Low reasoning and a read-only sandbox; promoted items become detailed handoffs for a manual GPT-6.1 Sol start |
+| Manual detailed boundary | Screening does not generate or import detailed judgements; the prepared HANDOFF.md remains ready for the user to start |
+| Invalid quick output | A result bound to the wrong input hash is rejected before import or detailed promotion |
+| Repeat processing | Unchanged evidence is not screened again; already prepared detailed items are not duplicated |
+| Detailed validation | Changed inputs/profile, duplicate or mismatched output, invented citations and inconsistent score bands are rejected |
+| SQL scope | Fresh databases contain vacancy evidence and assessment tables, without the removed email and application-folder tables |
+| Local dashboard | Stored decisions work; external Host/Origin and invalid token mutations are refused; removed queue/workspace endpoints return 404 |
+| Fixture-only export | A fresh isolated database is built from fictional fixtures; an existing runtime marker is absent from output |
+| Browser, 1280px and 390px | Filtering, sorting, details, shortlist persistence, reset and theme toggle passed; no page errors or viewport overflow |
 
-No real website, production mailbox, model account, employer contact or application submission was used. No images were reviewed and no TeX compilation was performed for this task. The browser checks used DOM and behaviour only.
+Browser verification used DOM and interaction checks only. No images or screenshots were reviewed and no TeX files were compiled.
 
-The test environment used pytest from an existing developer environment; runtime installation was separately checked in a fresh venv with no third-party runtime packages. GitHub Actions is configured to run the tests and demo on Ubuntu/Python 3.13 after upload; its returned status is separate from the local checks above.
-
-Transfer hashes, synthetic runtime databases and detailed local validation evidence remain under ignored `local/` and `var/`, outside the repository history.
+No real vacancy source, private account, production database or live model call was used during verification. The new quick-model runner was tested with a controlled subprocess double; its real account access, latency and assessment quality have not been benchmarked here. Fictional dashboard scores are illustrative, not measured model performance.
